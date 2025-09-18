@@ -3,12 +3,14 @@ const fs = require('fs').promises;
 const crypto = require('crypto');
 const MetadataExtractor = require('./metadata-extractor');
 const OfficialReleaseDetector = require('./officialReleases');
+const MusicBrainzService = require('./musicBrainzService');
 
 class ImportService {
   constructor(database) {
     this.db = database;
     this.metadataExtractor = new MetadataExtractor();
     this.releaseDetector = new OfficialReleaseDetector();
+    this.musicBrainzService = new MusicBrainzService();
   }
 
   async analyzeFiles(filePaths) {
@@ -19,12 +21,39 @@ class ImportService {
         // Use the enhanced metadata extractor
         const metadata = await this.metadataExtractor.extractMetadata(filePath);
 
+        // Try to find matches using audio fingerprinting
+        console.log('Attempting audio fingerprint matching for:', path.basename(filePath));
+        const fingerprintMatch = await this.musicBrainzService.findBestMatchWithFingerprint(filePath, {
+          artist: metadata.artist,
+          title: metadata.title,
+          album: metadata.album
+        });
+
+        if (fingerprintMatch) {
+          console.log(`Fingerprint match found: ${fingerprintMatch.title} by ${fingerprintMatch.artist} (confidence: ${fingerprintMatch.confidence})`);
+
+          // Merge fingerprint data with metadata
+          if (fingerprintMatch.confidence >= 0.7) {
+            metadata.artist = fingerprintMatch.artist || metadata.artist;
+            metadata.title = fingerprintMatch.title || metadata.title;
+            metadata.musicBrainzRecordingId = fingerprintMatch.recordingId;
+            metadata.musicBrainzReleaseId = fingerprintMatch.releaseId;
+            metadata.fingerprintMatch = fingerprintMatch;
+
+            // Check if it's a live recording
+            if (fingerprintMatch.isLive) {
+              metadata.isLiveRecording = true;
+            }
+          }
+        }
+
         // Suggest show match based on extracted metadata
         const suggested = await this.suggestShowMatch(metadata);
 
         results.push({
           ...metadata,
-          suggested
+          suggested,
+          fingerprintMatch
         });
       } catch (error) {
         console.error('Error analyzing file:', filePath, error);

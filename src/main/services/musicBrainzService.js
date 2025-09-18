@@ -5,6 +5,7 @@ const { promisify } = require('util');
 const path = require('path');
 const fs = require('fs').promises;
 const https = require('https');
+const AcoustIDService = require('./acoustidService');
 
 const execAsync = promisify(exec);
 
@@ -19,6 +20,9 @@ class MusicBrainzService {
 
     // Initialize Cover Art Archive API
     this.coverArtApi = new CoverArtArchiveApi();
+
+    // Initialize AcoustID Service for fingerprinting
+    this.acoustIDService = new AcoustIDService();
 
     // Cache for fingerprints and lookups
     this.fingerprintCache = new Map();
@@ -614,6 +618,302 @@ class MusicBrainzService {
       console.log(`No cover art available for release ${releaseId}`);
       return null;
     }
+  }
+
+  /**
+   * Enhanced audio file matching using AcoustID fingerprinting
+   * @param {string} filePath - Path to audio file
+   * @param {Object} metadata - Basic metadata (artist, title, etc.)
+   * @returns {Promise<Object>} - Best match with combined confidence score
+   */
+  async findBestMatchWithFingerprint(filePath, metadata = {}) {
+    try {
+      console.log('\n===== MUSICBRAINZ FINGERPRINT MATCH START =====');
+      console.log('File:', filePath);
+      console.log('Metadata provided:', {
+        artist: metadata.artist || 'none',
+        title: metadata.title || 'none',
+        album: metadata.album || 'none'
+      });
+
+      // Get AcoustID matches first
+      const acoustIDMatches = await this.acoustIDService.findMatches(filePath);
+
+      if (acoustIDMatches.length === 0) {
+        console.log('No AcoustID matches found, falling back to metadata search');
+        console.log('===== MUSICBRAINZ FINGERPRINT MATCH END (NO MATCHES) =====\n');
+        return this.searchByMetadataWrapper(metadata);
+      }
+
+      // Get the best AcoustID match
+      const bestAcoustIDMatch = acoustIDMatches[0];
+      console.log('\nBest AcoustID match selected:');
+      console.log('  Title:', bestAcoustIDMatch.title);
+      console.log('  Artists:', bestAcoustIDMatch.artists?.map(a => a.name).join(', '));
+      console.log('  Score:', bestAcoustIDMatch.score);
+      console.log('  Recording ID:', bestAcoustIDMatch.recordingId);
+
+      // If we have a high-confidence AcoustID match, enhance it with MusicBrainz data
+      if (bestAcoustIDMatch.score >= 0.8) {
+        console.log(`High confidence AcoustID match:`, {
+          title: bestAcoustIDMatch.title,
+          score: bestAcoustIDMatch.score,
+          recordingId: bestAcoustIDMatch.recordingId,
+          artists: bestAcoustIDMatch.artists
+        });
+
+        // Get full MusicBrainz data for the recording
+        let recording = null;
+        let recordingTitle = bestAcoustIDMatch.title;
+        let recordingArtist = bestAcoustIDMatch.artists?.[0]?.name;
+
+        try {
+          await this.rateLimit();
+          recording = await this.mbApi.lookup('recording', bestAcoustIDMatch.recordingId, [
+            'artists',
+            'releases',
+            'release-groups'
+          ]);
+
+          // MusicBrainz recording objects have title at the top level
+          if (recording) {
+            console.log('MusicBrainz recording lookup result:', {
+              hasTitle: !!recording.title,
+              title: recording.title,
+              hasArtistCredit: !!recording['artist-credit'],
+              artistCreditLength: recording['artist-credit']?.length
+            });
+
+            recordingTitle = recording.title || recordingTitle;
+            // Extract artist from artist-credit structure
+            if (recording['artist-credit'] && recording['artist-credit'].length > 0) {
+              const artistCredit = recording['artist-credit'][0];
+              if (artistCredit.artist) {
+                recordingArtist = artistCredit.artist.name || artistCredit.name || recordingArtist;
+              } else if (artistCredit.name) {
+                recordingArtist = artistCredit.name || recordingArtist;
+              }
+            }
+          }
+        } catch (lookupError) {
+          console.error('Error looking up recording from MusicBrainz:', lookupError);
+          // Continue with AcoustID data
+        }
+
+        // Find best release (prefer live releases)
+        let bestRelease = null;
+        let highestScore = 0;
+
+        for (const release of recording?.releases || []) {
+          let score = bestAcoustIDMatch.score * 100;
+
+          // Boost score for live releases
+          const releaseGroup = release['release-group'];
+          if (releaseGroup) {
+            const primaryType = releaseGroup['primary-type'];
+            const secondaryTypes = releaseGroup['secondary-types'] || [];
+
+            if (primaryType === 'Live' || secondaryTypes.includes('Live')) {
+              score += 30;
+            }
+
+            // Check for live indicators in title
+            const titleLower = release.title.toLowerCase();
+            if (titleLower.includes('live') || titleLower.includes('concert')) {
+              score += 20;
+            }
+          }
+
+          if (score > highestScore) {
+            highestScore = score;
+            bestRelease = release;
+          }
+        }
+
+        // Use the extracted title and artist with fallbacks
+        const title = recordingTitle || metadata?.title || 'Unknown Track';
+        const artistName = recordingArtist || metadata?.artist || 'Unknown Artist';
+
+        const result = {
+          source: 'acoustid',
+          confidence: bestAcoustIDMatch.score,
+          recordingId: bestAcoustIDMatch.recordingId,
+          releaseId: bestRelease?.id,
+          title: title,
+          artist: artistName,
+          artists: bestAcoustIDMatch.artists || recording?.['artist-credit'],
+          release: bestRelease,
+          album: bestRelease?.title,
+          releaseDate: bestRelease?.date,
+          isLive: this.isLiveRecording(bestRelease),
+          duration: bestAcoustIDMatch.duration || recording?.length,
+          fingerprint: 'generated' // Mark that we generated a unique fingerprint
+        };
+
+        console.log('\nFinal result to return:');
+        console.log('  Title:', result.title);
+        console.log('  Artist:', result.artist);
+        console.log('  Confidence:', (result.confidence * 100).toFixed(1) + '%');
+        console.log('  Recording ID:', result.recordingId);
+        console.log('===== MUSICBRAINZ FINGERPRINT MATCH END (SUCCESS) =====\n');
+
+        return result;
+      }
+
+      // For medium confidence matches, combine with metadata search
+      if (bestAcoustIDMatch.score >= 0.5) {
+        console.log('\nMedium confidence AcoustID match (50-80%), combining with metadata search');
+        console.log('  Current best match:', bestAcoustIDMatch.title, 'at', (bestAcoustIDMatch.score * 100).toFixed(1) + '%');
+
+        // Search by artist and title from AcoustID match
+        const artistName = bestAcoustIDMatch.artists && bestAcoustIDMatch.artists[0] ? bestAcoustIDMatch.artists[0].name : null;
+        const metadataMatches = await this.searchByMetadata(artistName, bestAcoustIDMatch.title, null);
+
+        // Combine scores
+        if (metadataMatches.recordings?.length > 0) {
+          const combined = this.combineAcoustIDAndMetadataResults(
+            bestAcoustIDMatch,
+            metadataMatches.recordings[0]
+          );
+          return combined;
+        }
+      }
+
+      // Low confidence - return AcoustID match but flag it
+      return {
+        source: 'acoustid-low-confidence',
+        confidence: bestAcoustIDMatch.score,
+        ...bestAcoustIDMatch,
+        needsVerification: true
+      };
+
+    } catch (error) {
+      console.error('Error in fingerprint matching:', error);
+      // Fall back to metadata-only search
+      return this.searchByMetadataWrapper(metadata);
+    }
+  }
+
+  /**
+   * Combine AcoustID and metadata search results
+   */
+  combineAcoustIDAndMetadataResults(acoustIDMatch, metadataMatch) {
+    // Calculate combined confidence score
+    const acoustIDWeight = 0.7;
+    const metadataWeight = 0.3;
+
+    const metadataScore = metadataMatch.score || 50;
+    const combinedScore = (acoustIDMatch.score * 100 * acoustIDWeight) +
+                         (metadataScore * metadataWeight);
+
+    return {
+      source: 'combined',
+      confidence: combinedScore / 100,
+      acoustIDScore: acoustIDMatch.score,
+      metadataScore: metadataScore / 100,
+      recordingId: acoustIDMatch.recordingId || metadataMatch.id,
+      title: acoustIDMatch.title,
+      artist: acoustIDMatch.artists[0]?.name,
+      artists: acoustIDMatch.artists,
+      releases: acoustIDMatch.releases,
+      metadataMatch: metadataMatch
+    };
+  }
+
+  /**
+   * Check if a release is a live recording
+   */
+  isLiveRecording(release) {
+    if (!release) return false;
+
+    const releaseGroup = release['release-group'];
+    if (releaseGroup) {
+      if (releaseGroup['primary-type'] === 'Live') return true;
+      if (releaseGroup['secondary-types']?.includes('Live')) return true;
+    }
+
+    // Check title for live indicators
+    const titleLower = (release.title || '').toLowerCase();
+    const liveIndicators = ['live', 'concert', 'bootleg', '(live)', 'in concert'];
+
+    return liveIndicators.some(indicator => titleLower.includes(indicator));
+  }
+
+  /**
+   * Fallback metadata-only search wrapper
+   */
+  async searchByMetadataWrapper(metadata) {
+    if (!metadata.artist && !metadata.title) {
+      return null;
+    }
+
+    try {
+      const results = await this.searchByMetadata(metadata.artist, metadata.title, null);
+
+      if (results.recordings?.length > 0) {
+        const best = results.recordings[0];
+        return {
+          source: 'metadata',
+          confidence: (best.score || 50) / 100,
+          recordingId: best.id,
+          title: best.title,
+          artist: best['artist-credit']?.[0]?.artist?.name,
+          releases: best.releases
+        };
+      }
+    } catch (error) {
+      console.error('Metadata search failed:', error);
+    }
+
+    return null;
+  }
+
+  /**
+   * Fetch album cover from CoverArtArchive
+   */
+  async fetchAlbumCover(releaseId) {
+    if (!releaseId) return null;
+
+    try {
+      console.log('Fetching cover art for release:', releaseId);
+
+      // CoverArtArchive API endpoint
+      const coverArtUrl = `https://coverartarchive.org/release/${releaseId}`;
+
+      const response = await fetch(coverArtUrl);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log('No cover art found for release:', releaseId);
+        } else {
+          console.error('CoverArtArchive error:', response.status);
+        }
+        return null;
+      }
+
+      const data = await response.json();
+
+      // Find the front cover
+      let coverImage = data.images.find(img => img.front === true);
+
+      // If no front cover, use the first image
+      if (!coverImage && data.images.length > 0) {
+        coverImage = data.images[0];
+      }
+
+      if (coverImage) {
+        console.log('Found cover art:', coverImage.thumbnails?.large || coverImage.image);
+        return {
+          small: coverImage.thumbnails?.small || coverImage.image,
+          large: coverImage.thumbnails?.large || coverImage.image,
+          original: coverImage.image
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching cover art:', error);
+    }
+
+    return null;
   }
 
   /**

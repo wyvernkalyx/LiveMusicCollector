@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from '@emotion/styled';
-import { Search, X, Music, Calendar, User, Disc, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { Search, X, Music, Calendar, User, Disc, CheckCircle, AlertCircle, ExternalLink, Fingerprint, FileAudio } from 'lucide-react';
 import { theme } from '../styles/globalStyles';
 
 const DialogOverlay = styled.div`
@@ -93,7 +93,7 @@ const SearchForm = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: ${theme.spacing.md};
-  margin-bottom: ${theme.spacing.xl};
+  margin-bottom: ${theme.spacing.lg};
 
   .field {
     display: flex;
@@ -259,6 +259,103 @@ const ResultItem = styled.div`
   }
 `;
 
+const TracksList = styled.div`
+  margin-top: ${theme.spacing.lg};
+  padding: ${theme.spacing.md};
+  background: ${theme.colors.background.elevated};
+  border-radius: ${theme.borderRadius.md};
+  max-height: 400px;
+  min-height: 200px;
+  overflow-y: auto;
+  border: 1px solid ${theme.colors.border};
+
+  h3 {
+    font-size: ${theme.typography.fontSize.md};
+    font-weight: 600;
+    margin-bottom: ${theme.spacing.md};
+    color: ${theme.colors.text.primary};
+    display: flex;
+    align-items: center;
+    gap: ${theme.spacing.sm};
+
+    svg {
+      width: 18px;
+      height: 18px;
+      color: ${theme.colors.accent.primary};
+    }
+  }
+`;
+
+const TrackItem = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: ${theme.spacing.sm};
+  border-radius: ${theme.borderRadius.sm};
+  margin-bottom: ${theme.spacing.xs};
+  background: ${props => props.hasFingerprint ?
+    theme.colors.status.success + '10' :
+    theme.colors.background.surface};
+  border: 2px solid ${props => props.isSelected ?
+    theme.colors.accent.primary :
+    props.hasFingerprint ?
+    theme.colors.status.success + '30' :
+    theme.colors.border};
+  cursor: ${props => props.hasFingerprint ? 'pointer' : 'default'};
+  transition: all ${theme.transitions.fast};
+
+  &:hover {
+    background: ${props => props.hasFingerprint ?
+      theme.colors.status.success + '20' :
+      theme.colors.background.secondary};
+    transform: ${props => props.hasFingerprint ? 'translateX(4px)' : 'none'};
+  }
+
+  .track-info {
+    display: flex;
+    align-items: center;
+    gap: ${theme.spacing.md};
+    flex: 1;
+
+    .track-number {
+      width: 30px;
+      text-align: center;
+      font-size: ${theme.typography.fontSize.sm};
+      color: ${theme.colors.text.secondary};
+    }
+
+    .track-name {
+      flex: 1;
+      font-size: ${theme.typography.fontSize.sm};
+      color: ${theme.colors.text.primary};
+    }
+  }
+
+  .fingerprint-status {
+    display: flex;
+    align-items: center;
+    gap: ${theme.spacing.xs};
+    font-size: ${theme.typography.fontSize.xs};
+    color: ${props => props.hasFingerprint ?
+      theme.colors.status.success :
+      theme.colors.text.secondary};
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .confidence {
+      padding: 2px 6px;
+      background: ${props => props.hasFingerprint ?
+        theme.colors.status.success + '20' :
+        theme.colors.background.elevated};
+      border-radius: ${theme.borderRadius.sm};
+      font-weight: 600;
+    }
+  }
+`;
+
 const DialogFooter = styled.div`
   padding: ${theme.spacing.lg};
   border-top: 1px solid ${theme.colors.border};
@@ -344,6 +441,136 @@ function MusicBrainzDialog({ initialData, onApply, onClose }) {
   const [results, setResults] = React.useState([]);
   const [selectedResult, setSelectedResult] = React.useState(null);
   const [isSearching, setIsSearching] = React.useState(false);
+  const [tracksWithFingerprints, setTracksWithFingerprints] = React.useState([]);
+  const [selectedTrack, setSelectedTrack] = React.useState(null);
+  const [trackReleases, setTrackReleases] = React.useState({});
+  const [releaseType, setReleaseType] = React.useState(null); // 'official' or 'concert'
+  const [showMergeWarning, setShowMergeWarning] = React.useState(false);
+
+  // Check for fingerprint data when component mounts or when initial data changes
+  React.useEffect(() => {
+    if (initialData?.tracks) {
+      console.log('MusicBrainz Dialog - Initial tracks:', initialData.tracks);
+
+      // Generate fingerprint status for each track
+      const trackFingerprintData = initialData.tracks.map((track, index) => {
+        // Get the original title from the track object
+        let originalTitle = '';
+        if (typeof track === 'string') {
+          originalTitle = track;
+        } else {
+          // Track object from AlbumView has title field
+          originalTitle = track.title;
+
+          // If still no title, use filename from path
+          if (!originalTitle && track.path) {
+            const filename = track.path.split(/[\\/]/).pop();
+            originalTitle = filename.replace(/\.[^.]+$/, '');
+          }
+
+          // Final fallback
+          if (!originalTitle) {
+            originalTitle = `Track ${track.trackNumber || index + 1}`;
+          }
+        }
+
+        console.log(`Track ${index + 1}: "${originalTitle}" from path: ${track.path}`);
+
+        return {
+          number: track.trackNumber || index + 1,
+          title: originalTitle,
+          path: track.path || track.file_path,
+          duration: track.duration,
+          trackNumber: track.trackNumber,
+          hasFingerprint: false,
+          confidence: 0,
+          matchedTitle: null,
+          originalData: track.originalData
+        };
+      });
+      setTracksWithFingerprints(trackFingerprintData);
+
+      // Start fingerprinting process for each track
+      checkFingerprints(trackFingerprintData);
+    }
+  }, [initialData]);
+
+  const checkFingerprints = async (tracks) => {
+    let foundMatches = false;
+
+    for (const track of tracks) {
+      if (track.path) {
+        try {
+          // Request fingerprint match for this track
+          const match = await window.api.invoke('musicbrainz:fingerprint', track.path);
+
+          if (match && match.confidence > 0) {
+            foundMatches = true;
+            setTracksWithFingerprints(prev => prev.map(t =>
+              t.path === track.path ? {
+                ...t,
+                hasFingerprint: true,
+                confidence: match.confidence,
+                matchedTitle: match.title,  // Keep the matched title separate
+                acousticId: match.recordingId,
+                artist: match.artist,
+                album: match.album,
+                releaseId: match.releaseId,
+                releaseDate: match.releaseDate,
+                recordings: match.recordings || []
+                // Note: DO NOT overwrite the original title field
+              } : t
+            ));
+
+            // Store release info for this track
+            if (match.recordings && match.recordings.length > 0) {
+              setTrackReleases(prev => ({
+                ...prev,
+                [track.path]: match.recordings
+              }));
+            }
+
+            // Update search query with first match info
+            if (match.artist && !searchQuery.artist) {
+              setSearchQuery(prev => ({
+                ...prev,
+                artist: match.artist
+              }));
+            }
+          }
+        } catch (error) {
+          console.error('Error getting fingerprint for track:', track.title, error);
+        }
+      }
+    }
+
+    // Auto-search if we found fingerprint matches
+    if (foundMatches) {
+      // Find the most common artist from matches
+      const artistCounts = {};
+      tracks.forEach(t => {
+        const updatedTrack = tracksWithFingerprints.find(tf => tf.path === t.path);
+        if (updatedTrack?.artist) {
+          artistCounts[updatedTrack.artist] = (artistCounts[updatedTrack.artist] || 0) + 1;
+        }
+      });
+
+      const mostCommonArtist = Object.keys(artistCounts).reduce((a, b) =>
+        artistCounts[a] > artistCounts[b] ? a : b, searchQuery.artist);
+
+      if (mostCommonArtist && mostCommonArtist !== searchQuery.artist) {
+        setSearchQuery(prev => ({
+          ...prev,
+          artist: mostCommonArtist
+        }));
+      }
+
+      setTimeout(() => {
+        console.log('Auto-searching based on fingerprint matches');
+        handleSearch();
+      }, 1500);
+    }
+  };
 
   const handleSearch = async () => {
     setIsSearching(true);
@@ -417,8 +644,12 @@ function MusicBrainzDialog({ initialData, onApply, onClose }) {
         label: selectedResult.label,
         catalogNumber: selectedResult.catalogNumber,
         isLive: selectedResult.isLive,
+        isOfficialRelease: releaseType === 'official',
+        releaseType: releaseType,
+        status: selectedResult.status,
         discCount: selectedResult.discCount,
         coverArt: selectedResult.coverArt,
+        shouldMerge: showMergeWarning, // Indicates multi-disc official release that needs merging
         tracks: selectedResult.tracks?.map(track => ({
           title: track.formattedTitle || track.displayTitle || track.title,
           position: track.position,
@@ -446,6 +677,36 @@ function MusicBrainzDialog({ initialData, onApply, onClose }) {
         </DialogHeader>
 
         <DialogContent>
+          <div style={{
+            padding: theme.spacing.md,
+            background: theme.colors.accent.primary + '10',
+            borderRadius: theme.borderRadius.md,
+            marginBottom: theme.spacing.lg,
+            fontSize: theme.typography.fontSize.sm,
+            color: theme.colors.text.primary,
+            lineHeight: 1.6
+          }}>
+            <strong>How to use this dialog:</strong>
+            <ol style={{ margin: `${theme.spacing.sm} 0 0 ${theme.spacing.lg}`, padding: 0 }}>
+              <li>✅ Fingerprints identify individual tracks (green = matched)</li>
+              <li>🔍 Search for the complete album/release in MusicBrainz</li>
+              <li>🎵 Identify if this is an <strong>Official Release</strong> or <strong>Concert Recording</strong></li>
+              <li>📀 Select the best matching release from the results</li>
+              <li>💾 Click "Apply Selected" to update all track metadata</li>
+            </ol>
+            {showMergeWarning && (
+              <div style={{
+                marginTop: theme.spacing.sm,
+                padding: theme.spacing.sm,
+                background: theme.colors.status.warning + '20',
+                borderRadius: theme.borderRadius.sm,
+                border: `1px solid ${theme.colors.status.warning}50`
+              }}>
+                ⚠️ <strong>Multi-disc Official Release Detected:</strong> This appears to be a multi-disc official release that was imported as separate concerts. Applying this metadata will merge them into a single album.
+              </div>
+            )}
+          </div>
+
           <SearchForm>
             <div className="field">
               <label>Artist</label>
@@ -457,7 +718,7 @@ function MusicBrainzDialog({ initialData, onApply, onClose }) {
               />
             </div>
             <div className="field">
-              <label>Album/Release</label>
+              <label>Album</label>
               <input
                 type="text"
                 value={searchQuery.album}
@@ -490,6 +751,175 @@ function MusicBrainzDialog({ initialData, onApply, onClose }) {
             {isSearching ? 'Searching...' : 'Search MusicBrainz'}
           </SearchButton>
 
+          {tracksWithFingerprints.length > 0 && (
+            <TracksList>
+              <h3>
+                <FileAudio />
+                Tracks to Match ({tracksWithFingerprints.length})
+              </h3>
+              {tracksWithFingerprints.map((track) => (
+                <TrackItem
+                  key={track.number}
+                  hasFingerprint={track.hasFingerprint}
+                  isSelected={selectedTrack?.path === track.path}
+                  onClick={() => {
+                    if (track.hasFingerprint) {
+                      setSelectedTrack(track);
+                      // Update search with this track's matched info
+                      if (track.artist) {
+                        setSearchQuery({
+                          artist: track.artist || searchQuery.artist,
+                          album: track.album || searchQuery.album,
+                          date: searchQuery.date,
+                          trackCount: searchQuery.trackCount
+                        });
+                      }
+                    }
+                  }}
+                  title={track.hasFingerprint ? 'Click to see matches and update search' : ''}
+                >
+                  <div className="track-info">
+                    <span className="track-number">{track.number}</span>
+                    <span className="track-name">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                          <span style={{
+                            fontWeight: 500,
+                            color: theme.colors.text.primary,
+                            fontSize: '0.95em'
+                          }}>
+                            {track.title || 'Unknown Track'}
+                          </span>
+                          {track.duration && (
+                            <span style={{
+                              color: theme.colors.text.secondary,
+                              fontSize: '0.75em',
+                              opacity: 0.7
+                            }}>
+                              ({Math.floor(track.duration / 60)}:{String(Math.floor(track.duration % 60)).padStart(2, '0')})
+                            </span>
+                          )}
+                        </div>
+
+                        {track.hasFingerprint && track.matchedTitle && track.matchedTitle !== track.title && (
+                          <div style={{
+                            padding: '4px 8px',
+                            background: theme.colors.status.success + '15',
+                            borderRadius: theme.borderRadius.sm,
+                            border: `1px solid ${theme.colors.status.success}30`
+                          }}>
+                            <span style={{
+                              color: theme.colors.status.success,
+                              fontSize: '0.85em',
+                              fontWeight: 600
+                            }}>
+                              ✓ Match: {track.matchedTitle}
+                            </span>
+                            {track.artist && track.album && (
+                              <span style={{
+                                color: theme.colors.text.secondary,
+                                fontSize: '0.8em',
+                                marginLeft: '8px'
+                              }}>
+                                • {track.artist} - {track.album}
+                                {track.releaseDate && ` (${track.releaseDate})`}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {!track.hasFingerprint && track.path && (
+                          <span style={{
+                            color: theme.colors.text.secondary,
+                            fontSize: '0.75em',
+                            opacity: 0.6,
+                            fontStyle: 'italic'
+                          }}>
+                            File: {track.path.split(/[\\/]/).pop()}
+                          </span>
+                        )}
+                      </div>
+                    </span>
+                  </div>
+                  <div className="fingerprint-status">
+                    {track.hasFingerprint ? (
+                      <>
+                        <Fingerprint />
+                        <span className="confidence">
+                          {Math.round(track.confidence * 100)}% match
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle />
+                        <span>No fingerprint</span>
+                      </>
+                    )}
+                  </div>
+                </TrackItem>
+              ))}
+            </TracksList>
+          )}
+
+          {selectedTrack && selectedTrack.recordings && selectedTrack.recordings.length > 0 && (
+            <TracksList style={{ marginTop: theme.spacing.md }}>
+              <h3>
+                <Disc />
+                Releases containing "{selectedTrack.matchedTitle || selectedTrack.title}"
+              </h3>
+              <div style={{ fontSize: theme.typography.fontSize.sm, color: theme.colors.text.secondary, marginBottom: theme.spacing.md }}>
+                This track appears on {selectedTrack.recordings.length} release{selectedTrack.recordings.length > 1 ? 's' : ''}
+              </div>
+              {selectedTrack.recordings.slice(0, 5).map((recording, idx) => (
+                <div key={idx} style={{
+                  padding: theme.spacing.sm,
+                  background: theme.colors.background.surface,
+                  borderRadius: theme.borderRadius.sm,
+                  marginBottom: theme.spacing.sm,
+                  border: `1px solid ${theme.colors.border}`
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>
+                    {recording.releaseTitle || recording.album || 'Unknown Release'}
+                  </div>
+                  <div style={{
+                    fontSize: theme.typography.fontSize.xs,
+                    color: theme.colors.text.secondary,
+                    display: 'flex',
+                    gap: theme.spacing.md
+                  }}>
+                    {recording.artist && <span>{recording.artist}</span>}
+                    {recording.date && <span>{recording.date}</span>}
+                    {recording.country && <span>{recording.country}</span>}
+                    {recording.format && <span>{recording.format}</span>}
+                  </div>
+                  {recording.isLive && (
+                    <span style={{
+                      fontSize: '0.7em',
+                      background: theme.colors.status.success + '20',
+                      color: theme.colors.status.success,
+                      padding: '2px 6px',
+                      borderRadius: theme.borderRadius.sm,
+                      marginTop: '4px',
+                      display: 'inline-block'
+                    }}>
+                      Live Recording
+                    </span>
+                  )}
+                </div>
+              ))}
+              {selectedTrack.recordings.length > 5 && (
+                <div style={{
+                  fontSize: theme.typography.fontSize.xs,
+                  color: theme.colors.text.secondary,
+                  textAlign: 'center',
+                  marginTop: theme.spacing.sm
+                }}>
+                  +{selectedTrack.recordings.length - 5} more releases
+                </div>
+              )}
+            </TracksList>
+          )}
+
           {isSearching && (
             <LoadingState>
               <Search />
@@ -504,7 +934,23 @@ function MusicBrainzDialog({ initialData, onApply, onClose }) {
                   key={result.id}
                   selected={selectedResult?.id === result.id}
                   confidence={result.confidence}
-                  onClick={() => setSelectedResult(result)}
+                  onClick={() => {
+                    setSelectedResult(result);
+                    // Detect release type
+                    const isOfficial = result.status === 'Official' ||
+                                      result.type === 'album' ||
+                                      result.type === 'compilation' ||
+                                      !result.isLive;
+                    setReleaseType(isOfficial ? 'official' : 'concert');
+
+                    // Check if we need to show merge warning
+                    if (isOfficial && result.discCount > 1 && initialData?.date) {
+                      // This is a multi-disc official release and we have date info (suggesting it was split)
+                      setShowMergeWarning(true);
+                    } else {
+                      setShowMergeWarning(false);
+                    }
+                  }}
                 >
                   <div className="result-header">
                     <div className="result-title">
@@ -539,19 +985,44 @@ function MusicBrainzDialog({ initialData, onApply, onClose }) {
                           <ExternalLink style={{ width: '12px', height: '12px' }} />
                         </a>
                       )}
-                      {result.isLive && (
-                        <span style={{
-                          fontSize: '0.75em',
-                          background: theme.colors.accent.primary + '20',
-                          color: theme.colors.accent.primary,
-                          padding: '2px 6px',
-                          borderRadius: theme.borderRadius.sm,
-                          marginTop: '4px',
-                          display: 'inline-block'
-                        }}>
-                          Live Recording
-                        </span>
-                      )}
+                      <div style={{ marginTop: '4px', display: 'flex', gap: theme.spacing.xs }}>
+                        {result.isLive && (
+                          <span style={{
+                            fontSize: '0.75em',
+                            background: theme.colors.accent.primary + '20',
+                            color: theme.colors.accent.primary,
+                            padding: '2px 6px',
+                            borderRadius: theme.borderRadius.sm,
+                            display: 'inline-block'
+                          }}>
+                            🎤 Live Recording
+                          </span>
+                        )}
+                        {result.status === 'Official' && (
+                          <span style={{
+                            fontSize: '0.75em',
+                            background: theme.colors.status.success + '20',
+                            color: theme.colors.status.success,
+                            padding: '2px 6px',
+                            borderRadius: theme.borderRadius.sm,
+                            display: 'inline-block'
+                          }}>
+                            ✓ Official Release
+                          </span>
+                        )}
+                        {result.status === 'Bootleg' && (
+                          <span style={{
+                            fontSize: '0.75em',
+                            background: theme.colors.status.warning + '20',
+                            color: theme.colors.status.warning,
+                            padding: '2px 6px',
+                            borderRadius: theme.borderRadius.sm,
+                            display: 'inline-block'
+                          }}>
+                            📦 Bootleg
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="confidence">
                       {result.confidence > 0.8 ? <CheckCircle /> : <AlertCircle />}
@@ -607,7 +1078,7 @@ function MusicBrainzDialog({ initialData, onApply, onClose }) {
                                 {track.discTrackNumber}.
                               </span>
                             )}
-                            {track.displayTitle || track.title || (typeof track === 'string' ? track : track.title)}
+                            {track.displayTitle || track.title || (typeof track === 'string' ? track : 'Unknown Track')}
                             {track.hasSegue && ' >'}
                           </div>
                         ))}
@@ -636,12 +1107,33 @@ function MusicBrainzDialog({ initialData, onApply, onClose }) {
           <button className="cancel" onClick={onClose}>
             Cancel
           </button>
+          {selectedResult?.status === 'Official' && (
+            <button
+              className="apply"
+              onClick={() => {
+                if (window.confirm(
+                  `This will apply "${selectedResult.title}" metadata to ALL tracks in this collection.\n\n` +
+                  `This is recommended for official releases to ensure consistent metadata.\n\n` +
+                  `Continue?`
+                )) {
+                  handleApply();
+                }
+              }}
+              disabled={!selectedResult}
+              style={{
+                background: theme.colors.status.success,
+                marginRight: theme.spacing.sm
+              }}
+            >
+              Apply to All Tracks
+            </button>
+          )}
           <button
             className="apply"
             onClick={handleApply}
             disabled={!selectedResult}
           >
-            Apply Selected
+            {selectedResult?.status === 'Official' ? 'Apply Without Confirmation' : 'Apply Selected'}
           </button>
         </DialogFooter>
       </DialogContainer>

@@ -1,7 +1,7 @@
 import React from 'react';
 import styled from '@emotion/styled';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, MapPin, Music, Disc, Mic, Calendar } from 'lucide-react';
+import { ChevronRight, MapPin, Music, Disc, Mic, Calendar, CheckCircle, Clock, MessageSquare } from 'lucide-react';
 import { theme } from '../styles/globalStyles';
 
 const Card = styled.div`
@@ -140,6 +140,36 @@ const SourceBadge = styled.span`
   font-weight: 500;
 `;
 
+const VerificationBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: ${theme.borderRadius.sm};
+  font-size: ${theme.typography.fontSize.xs};
+  font-weight: 500;
+
+  &.verified {
+    background: ${theme.colors.status.success}20;
+    color: ${theme.colors.status.success};
+  }
+
+  &.needs-review {
+    background: ${theme.colors.status.warning}20;
+    color: ${theme.colors.status.warning};
+  }
+
+  &.unverified {
+    background: ${theme.colors.text.disabled || '#666666'}20;
+    color: ${theme.colors.text.secondary};
+  }
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+`;
+
 function ShowCard({
   show,
   expanded = false,
@@ -199,6 +229,18 @@ function ShowCard({
                 {show.source_type}
               </SourceBadge>
             )}
+            {/* Verification Status Badge */}
+            {show.verified ? (
+              <VerificationBadge className="verified">
+                <CheckCircle />
+                Verified
+              </VerificationBadge>
+            ) : show.needs_review ? (
+              <VerificationBadge className="needs-review">
+                <MessageSquare />
+                Review
+              </VerificationBadge>
+            ) : null}
           </ShowTitle>
 
           {!compact && (

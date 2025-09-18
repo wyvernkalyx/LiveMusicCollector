@@ -176,6 +176,18 @@ class DatabaseService {
   async runMigrations() {
     console.log('Running database migrations...');
 
+    // Import and run concert/release schema migrations
+    const ConcertReleaseSchema = require('./concertReleaseSchema');
+    try {
+      ConcertReleaseSchema.createTables(this.db);
+      console.log('Concert/Release schema migration completed');
+    } catch (error) {
+      // Only log non-duplicate column errors
+      if (!error.message || !error.message.includes('duplicate column')) {
+        console.error('Error in concert/release migration:', error);
+      }
+    }
+
     // Check if columns exist before adding them
     const checkColumn = async (table, column) => {
       const result = await this.allAsync(`PRAGMA table_info(${table})`);
@@ -278,10 +290,49 @@ class DatabaseService {
       }
     }
 
+    // Add verification status columns to shows table
+    if (!(await checkColumn('shows', 'verified'))) {
+      try {
+        await this.runAsync('ALTER TABLE shows ADD COLUMN verified BOOLEAN DEFAULT 0');
+        console.log('Added verified column to shows table');
+      } catch (err) {
+        console.log('Column verified may already exist:', err.message);
+      }
+    }
+
+    if (!(await checkColumn('shows', 'verified_date'))) {
+      try {
+        await this.runAsync('ALTER TABLE shows ADD COLUMN verified_date DATETIME');
+        console.log('Added verified_date column to shows table');
+      } catch (err) {
+        console.log('Column verified_date may already exist:', err.message);
+      }
+    }
+
+    if (!(await checkColumn('shows', 'needs_review'))) {
+      try {
+        await this.runAsync('ALTER TABLE shows ADD COLUMN needs_review BOOLEAN DEFAULT 0');
+        console.log('Added needs_review column to shows table');
+      } catch (err) {
+        console.log('Column needs_review may already exist:', err.message);
+      }
+    }
+
+    if (!(await checkColumn('shows', 'review_notes'))) {
+      try {
+        await this.runAsync('ALTER TABLE shows ADD COLUMN review_notes TEXT');
+        console.log('Added review_notes column to shows table');
+      } catch (err) {
+        console.log('Column review_notes may already exist:', err.message);
+      }
+    }
+
     // Create indexes for new columns
     try {
       await this.runAsync('CREATE INDEX IF NOT EXISTS idx_tracks_checksum_md5 ON tracks(checksum_md5)');
       await this.runAsync('CREATE INDEX IF NOT EXISTS idx_recordings_official ON recordings(is_official)');
+      await this.runAsync('CREATE INDEX IF NOT EXISTS idx_shows_verified ON shows(verified)');
+      await this.runAsync('CREATE INDEX IF NOT EXISTS idx_shows_needs_review ON shows(needs_review)');
       console.log('Created indexes for new columns');
     } catch (err) {
       console.log('Indexes may already exist:', err.message);
@@ -389,7 +440,8 @@ class DatabaseService {
   async getShowsByYear(year) {
     return this.allAsync(`
       SELECT s.*, b.name as band_name, v.name as venue_name,
-             v.city, v.state, COUNT(r.id) as recording_count
+             v.city, v.state, COUNT(r.id) as recording_count,
+             s.verified, s.verified_date, s.needs_review, s.review_notes
       FROM shows s
       JOIN bands b ON s.band_id = b.id
       LEFT JOIN venues v ON s.venue_id = v.id
@@ -406,7 +458,8 @@ class DatabaseService {
              v.city, v.state,
              COUNT(DISTINCT r.id) as recording_count,
              COUNT(DISTINCT t.id) as track_count,
-             AVG(r.quality_rating) as quality_rating
+             AVG(r.quality_rating) as quality_rating,
+             s.verified, s.verified_date, s.needs_review, s.review_notes
       FROM shows s
       JOIN bands b ON s.band_id = b.id
       LEFT JOIN venues v ON s.venue_id = v.id
@@ -1050,6 +1103,104 @@ class DatabaseService {
     } catch (error) {
       console.error('Error clearing database:', error);
       return { success: false, error: error.message };
+    }
+  }
+
+  // Verification status methods
+  async markShowAsVerified(showId, notes = null) {
+    try {
+      await this.runAsync(
+        `UPDATE shows SET
+         verified = 1,
+         verified_date = CURRENT_TIMESTAMP,
+         needs_review = 0,
+         review_notes = ?
+         WHERE id = ?`,
+        [notes, showId]
+      );
+      return { success: true };
+    } catch (error) {
+      console.error('Error marking show as verified:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async markShowForReview(showId, notes) {
+    try {
+      await this.runAsync(
+        `UPDATE shows SET
+         needs_review = 1,
+         review_notes = ?
+         WHERE id = ?`,
+        [notes, showId]
+      );
+      return { success: true };
+    } catch (error) {
+      console.error('Error marking show for review:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async clearShowVerification(showId) {
+    try {
+      await this.runAsync(
+        `UPDATE shows SET
+         verified = 0,
+         verified_date = NULL,
+         needs_review = 0,
+         review_notes = NULL
+         WHERE id = ?`,
+        [showId]
+      );
+      return { success: true };
+    } catch (error) {
+      console.error('Error clearing show verification:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async getShowVerificationStatus(showId) {
+    try {
+      const show = await this.getAsync(
+        'SELECT verified, verified_date, needs_review, review_notes FROM shows WHERE id = ?',
+        [showId]
+      );
+      return show || { verified: false, needs_review: false };
+    } catch (error) {
+      console.error('Error getting show verification status:', error);
+      return { verified: false, needs_review: false };
+    }
+  }
+
+  async getUnverifiedShows() {
+    try {
+      return await this.allAsync(
+        `SELECT s.*, b.name as band_name, v.name as venue_name, v.city, v.state
+         FROM shows s
+         JOIN bands b ON s.band_id = b.id
+         LEFT JOIN venues v ON s.venue_id = v.id
+         WHERE s.verified = 0 OR s.verified IS NULL
+         ORDER BY s.date DESC`
+      );
+    } catch (error) {
+      console.error('Error getting unverified shows:', error);
+      return [];
+    }
+  }
+
+  async getShowsNeedingReview() {
+    try {
+      return await this.allAsync(
+        `SELECT s.*, b.name as band_name, v.name as venue_name, v.city, v.state, s.review_notes
+         FROM shows s
+         JOIN bands b ON s.band_id = b.id
+         LEFT JOIN venues v ON s.venue_id = v.id
+         WHERE s.needs_review = 1
+         ORDER BY s.date DESC`
+      );
+    } catch (error) {
+      console.error('Error getting shows needing review:', error);
+      return [];
     }
   }
 }

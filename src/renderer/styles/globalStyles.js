@@ -216,4 +216,4 @@ export const globalStyles = css`
     white-space: nowrap;
     border-width: 0;
   }
-`;
+  `;

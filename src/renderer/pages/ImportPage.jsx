@@ -24,49 +24,28 @@ const Header = styled.div`
   }
 `;
 
-const DropZone = styled.div`
-  height: 200px;
-  border: 2px dashed ${props => props.isDragging ? theme.colors.accent.primary : theme.colors.border};
-  border-radius: ${theme.borderRadius.lg};
-  background: ${props => props.isDragging ? theme.colors.accent.primary + '10' : theme.colors.background.surface};
+const SelectionBar = styled.div`
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  transition: all ${theme.transitions.fast};
-  cursor: pointer;
-  margin-bottom: ${theme.spacing.lg};
-
-  &:hover {
-    border-color: ${theme.colors.accent.primary};
-    background: ${theme.colors.accent.primary + '10'};
-  }
-
-  svg {
-    width: 48px;
-    height: 48px;
-    color: ${theme.colors.text.secondary};
-    margin-bottom: ${theme.spacing.md};
-  }
-
-  h3 {
-    font-size: ${theme.typography.fontSize.lg};
-    margin-bottom: ${theme.spacing.sm};
-  }
-
-  p {
-    color: ${theme.colors.text.secondary};
-    margin-bottom: ${theme.spacing.md};
-  }
+  gap: ${theme.spacing.md};
+  margin-bottom: ${theme.spacing.md};
 
   button {
     padding: ${theme.spacing.sm} ${theme.spacing.lg};
     background: ${theme.colors.accent.primary};
     color: white;
     border-radius: ${theme.borderRadius.md};
+    display: flex;
+    align-items: center;
+    gap: ${theme.spacing.xs};
+    font-size: ${theme.typography.fontSize.md};
 
     &:hover {
       background: ${theme.colors.accent.secondary};
+    }
+
+    svg {
+      width: 18px;
+      height: 18px;
     }
   }
 `;
@@ -122,7 +101,7 @@ const ImportOptions = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: ${theme.spacing.md};
-  margin-bottom: ${theme.spacing.lg};
+  margin-bottom: ${theme.spacing.md};
   padding: ${theme.spacing.md};
   background: ${theme.colors.background.surface};
   border-radius: ${theme.borderRadius.lg};
@@ -170,7 +149,6 @@ const ProgressBar = styled.div`
 
 function ImportPage() {
   const { importFiles, settings, initialize } = useStore();
-  const [isDragging, setIsDragging] = React.useState(false);
   const [files, setFiles] = React.useState([]);
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
@@ -188,50 +166,6 @@ function ImportPage() {
     }
   }, [initialize, settings]);
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    // Get file paths from the dataTransfer
-    const files = [];
-
-    // In Electron, we can get the full paths
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        const file = e.dataTransfer.files[i];
-        files.push({
-          name: file.name,
-          path: file.path || file.name, // file.path is available in Electron
-          size: file.size,
-          type: file.type
-        });
-      }
-    }
-
-    handleFiles(files);
-  };
-
-  const handleFileSelect = async () => {
-    if (window.api) {
-      const result = await window.api.openFiles();
-      if (!result.canceled) {
-        const selectedFiles = result.filePaths.map(path => ({
-          path,
-          name: path.split(/[\\/]/).pop()
-        }));
-        handleFiles(selectedFiles);
-      }
-    }
-  };
 
   const handleFolderSelect = async () => {
     if (window.api) {
@@ -275,23 +209,6 @@ function ImportPage() {
     }
   };
 
-  const handleFiles = (newFiles) => {
-    const fileItems = newFiles.map(file => {
-      // Ensure we have a proper path
-      const filePath = file.path || file.name;
-      const fileName = file.name || filePath.split(/[\\/]/).pop();
-
-      return {
-        id: Math.random().toString(36).substr(2, 9),
-        name: fileName,
-        path: filePath,
-        size: file.size || 0,
-        status: 'pending',
-        isFromFolder: false
-      };
-    });
-    setFiles(prev => [...prev, ...fileItems]);
-  };
 
   const startImport = async () => {
     // Check if library path is configured when copy option is enabled
@@ -377,33 +294,14 @@ function ImportPage() {
         <p>Add new recordings to your library</p>
       </Header>
 
-      <DropZone
-        isDragging={isDragging}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={handleFileSelect}
-      >
-        <Upload />
-        <h3>Drop files here or click to browse</h3>
-        <p>Supports FLAC, MP3, WAV, ALAC, and M4A files</p>
-        <div style={{ display: 'flex', gap: theme.spacing.md }}>
-          <button onClick={(e) => { e.stopPropagation(); handleFileSelect(); }}>
-            Select Files
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); handleFolderSelect(); }}
-            style={{ background: theme.colors.background.elevated, color: theme.colors.text.primary }}
-          >
-            <Folder style={{ width: 16, height: 16, marginRight: theme.spacing.xs }} />
-            Select Folder
-          </button>
-        </div>
-      </DropZone>
+      <SelectionBar>
+        <button onClick={handleFolderSelect}>
+          <Folder />
+          Select Folder
+        </button>
+      </SelectionBar>
 
-      {files.length > 0 && (
-        <>
-          <ImportOptions>
+      <ImportOptions>
             <Option>
               <input
                 type="checkbox"
@@ -436,31 +334,38 @@ function ImportPage() {
               />
               <span>Match to known shows</span>
             </Option>
-            <Option style={{ borderTop: '1px solid #333', paddingTop: '12px', marginTop: '8px' }}>
-              <input
-                type="checkbox"
-                checked={options.isOfficialRelease || false}
-                onChange={(e) => setOptions({ ...options, isOfficialRelease: e.target.checked })}
-              />
-              <span style={{ fontWeight: 'bold' }}>This is an official release (box set, anniversary edition, etc.)</span>
-            </Option>
-          </ImportOptions>
+      </ImportOptions>
 
-          <FileList>
-            {files.map(file => (
-              <FileItem key={file.id} status={file.status}>
-                {getFileIcon(file.status)}
-                <span className="filename">{file.name}</span>
-                <div className="info">
-                  <span>{formatFileSize(file.size)}</span>
-                  {file.isFromFolder && <span style={{ color: theme.colors.text.secondary }}>📁</span>}
-                  {file.error && <span style={{ color: theme.colors.status.error }}>{file.error}</span>}
-                </div>
-              </FileItem>
-            ))}
-          </FileList>
+      <FileList>
+        {files.length === 0 ? (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            color: theme.colors.text.secondary
+          }}>
+            <Info style={{ width: 48, height: 48, marginBottom: theme.spacing.md }} />
+            <p>No files selected. Click "Select Folder" to choose a folder containing your music files.</p>
+            <p style={{ marginTop: theme.spacing.sm, fontSize: theme.typography.fontSize.sm }}>Supports FLAC, MP3, WAV, ALAC, and M4A files</p>
+          </div>
+        ) : (
+          files.map(file => (
+            <FileItem key={file.id} status={file.status}>
+              {getFileIcon(file.status)}
+              <span className="filename">{file.name}</span>
+              <div className="info">
+                <span>{formatFileSize(file.size)}</span>
+                {file.isFromFolder && <span style={{ color: theme.colors.text.secondary }}>📁</span>}
+                {file.error && <span style={{ color: theme.colors.status.error }}>{file.error}</span>}
+              </div>
+            </FileItem>
+          ))
+        )}
+      </FileList>
 
-          <ActionBar>
+      <ActionBar>
             <button
               onClick={clearFiles}
               disabled={isProcessing}
@@ -488,9 +393,7 @@ function ImportPage() {
             >
               {isProcessing ? 'Importing...' : `Import ${files.filter(f => f.status === 'pending').length} Files`}
             </button>
-          </ActionBar>
-        </>
-      )}
+      </ActionBar>
     </PageContainer>
   );
 }

@@ -36,6 +36,14 @@ contextBridge.exposeInMainWorld('api', {
   clearDatabase: () => ipcRenderer.invoke('db:clearAll'),
   bulkUpdateShows: (updates) => ipcRenderer.invoke('db:bulkUpdateShows', updates),
 
+  // Verification status operations
+  markShowAsVerified: (showId, notes) => ipcRenderer.invoke('db:markShowAsVerified', showId, notes),
+  markShowForReview: (showId, notes) => ipcRenderer.invoke('db:markShowForReview', showId, notes),
+  clearShowVerification: (showId) => ipcRenderer.invoke('db:clearShowVerification', showId),
+  getShowVerificationStatus: (showId) => ipcRenderer.invoke('db:getShowVerificationStatus', showId),
+  getUnverifiedShows: () => ipcRenderer.invoke('db:getUnverifiedShows'),
+  getShowsNeedingReview: () => ipcRenderer.invoke('db:getShowsNeedingReview'),
+
   // Track management operations
   getAllTracks: () => ipcRenderer.invoke('db:getAllTracks'),
   getTracksByShow: (showId) => ipcRenderer.invoke('db:getTracksByShow', showId),
@@ -61,10 +69,13 @@ contextBridge.exposeInMainWorld('api', {
   checkAudioFile: (filePath) => ipcRenderer.invoke('audio:checkFile', filePath),
   getAudioFileUrl: (filePath) => ipcRenderer.invoke('audio:getFileUrl', filePath),
 
+  // File metadata operations
+  getFileMetadata: (filePath) => ipcRenderer.invoke('file:getMetadata', filePath),
+
   // MusicBrainz API
   invoke: (channel, ...args) => {
     // Allow only specific channels for security
-    const validChannels = ['musicbrainz:search', 'audio:checkFile', 'audio:getFileUrl'];
+    const validChannels = ['musicbrainz:search', 'musicbrainz:fingerprint', 'musicbrainz:fetchCover', 'file:getMetadata', 'audio:checkFile', 'audio:getFileUrl'];
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);
     }

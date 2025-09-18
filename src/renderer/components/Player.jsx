@@ -171,6 +171,7 @@ function Player() {
   const audioRef = React.useRef(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
+  const playPromiseRef = React.useRef(null);
 
   // Format time in MM:SS
   const formatTime = (seconds) => {
@@ -232,8 +233,21 @@ function Player() {
           // If playing, start playback
           if (player.isPlaying) {
             try {
-              await audioRef.current.play();
+              // Cancel any previous play promise
+              if (playPromiseRef.current) {
+                playPromiseRef.current.catch(() => {});
+              }
+
+              playPromiseRef.current = audioRef.current.play();
+              await playPromiseRef.current;
+              playPromiseRef.current = null;
             } catch (playErr) {
+              playPromiseRef.current = null;
+              // Ignore abort errors
+              if (playErr.name === 'AbortError') {
+                console.log('Play interrupted while loading new track (normal behavior)');
+                return;
+              }
               console.error('Error playing audio:', playErr);
               setError(`Cannot play ${ext} files. Try MP3 or M4A format.`);
               pausePlayback();
@@ -257,12 +271,41 @@ function Player() {
       if (player.isPlaying && !audioRef.current.paused) {
         // Already playing
       } else if (player.isPlaying) {
-        audioRef.current.play().catch(err => {
-          console.error('Error playing audio:', err);
-          setError('Failed to play audio');
-          pausePlayback();
-        });
+        // Cancel any pending play promise
+        if (playPromiseRef.current) {
+          playPromiseRef.current.catch(() => {
+            // Ignore the abort error from the previous play request
+          });
+        }
+
+        // Start new play request
+        playPromiseRef.current = audioRef.current.play();
+        playPromiseRef.current
+          .then(() => {
+            // Play started successfully
+            playPromiseRef.current = null;
+            setError(null);
+          })
+          .catch(err => {
+            playPromiseRef.current = null;
+            // Ignore abort errors - they happen when switching tracks quickly
+            if (err.name === 'AbortError') {
+              console.log('Play request was interrupted (this is normal when switching tracks)');
+              return;
+            }
+            // Handle other errors
+            console.error('Error playing audio:', err);
+            setError('Failed to play audio');
+            pausePlayback();
+          });
       } else {
+        // Cancel any pending play promise when pausing
+        if (playPromiseRef.current) {
+          playPromiseRef.current.catch(() => {
+            // Ignore the abort error
+          });
+          playPromiseRef.current = null;
+        }
         audioRef.current.pause();
       }
     }
@@ -274,6 +317,17 @@ function Player() {
       audioRef.current.volume = player.volume;
     }
   }, [player.volume]);
+
+  // Cleanup on unmount
+  React.useEffect(() => {
+    return () => {
+      // Cancel any pending play promises on unmount
+      if (playPromiseRef.current) {
+        playPromiseRef.current.catch(() => {});
+        playPromiseRef.current = null;
+      }
+    };
+  }, []);
 
   // Audio event handlers
   const handleTimeUpdate = () => {
@@ -348,6 +402,37 @@ function Player() {
     setVolume(percentage);
   };
 
+  // Handle volume slider drag
+  const handleVolumeMouseDown = (e) => {
+    e.preventDefault();
+    const slider = e.currentTarget;
+    const rect = slider.getBoundingClientRect();
+
+    const updateVolume = (clientX) => {
+      const x = clientX - rect.left;
+      const percentage = Math.max(0, Math.min(1, x / rect.width));
+      setVolume(percentage);
+      if (audioRef.current) {
+        audioRef.current.volume = percentage;
+      }
+    };
+
+    // Initial click
+    updateVolume(e.clientX);
+
+    const handleMouseMove = (moveEvent) => {
+      updateVolume(moveEvent.clientX);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   return (
     <PlayerContainer>
       <audio
@@ -418,8 +503,26 @@ function Player() {
       
       <VolumeControl>
         <Volume2 />
-        <div className="slider" onClick={handleVolumeClick}>
+        <div
+          className="slider"
+          onMouseDown={handleVolumeMouseDown}
+          style={{ userSelect: 'none' }}
+        >
           <div className="fill" style={{ width: `${player.volume * 100}%` }} />
+          <div
+            className="handle"
+            style={{
+              left: `${player.volume * 100}%`,
+              position: 'absolute',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '12px',
+              height: '12px',
+              background: 'white',
+              borderRadius: '50%',
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+            }}
+          />
         </div>
       </VolumeControl>
       

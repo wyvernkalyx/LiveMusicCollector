@@ -9,9 +9,29 @@ const NormalizationService = require('./services/normalization');
 const FolderScanner = require('./services/folder-scanner');
 const ArchiveOrgLookup = require('./services/archive-org-lookup');
 const MusicBrainzService = require('./services/musicBrainzService');
+const MetadataExtractor = require('./services/metadata-extractor');
 
 let mainWindow;
 let db;
+
+// Suppress SQLite duplicate column errors
+process.on('uncaughtException', (error) => {
+  if (error.message && error.message.includes('duplicate column')) {
+    // Silently ignore duplicate column errors
+    return;
+  }
+  // Log other errors but don't crash
+  console.error('Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (error) => {
+  if (error && error.message && error.message.includes('duplicate column')) {
+    // Silently ignore duplicate column errors
+    return;
+  }
+  // Log other errors
+  console.error('Unhandled rejection:', error);
+});
 
 // Register custom protocol for audio streaming
 const { protocol: electronProtocol } = require('electron');
@@ -41,22 +61,22 @@ async function createWindow() {
   if (isDev) {
     // In development, load from Vite dev server
     const loadDevServer = async () => {
-      try {
-        await mainWindow.loadURL('http://localhost:5175');
-      } catch (err) {
-        console.log('Vite not ready on 5175, trying 5174...');
+      // Start with 5182 since that's the port commonly in use
+      const ports = [5182, 5181, 5180, 5179, 5178, 5177, 5176, 5175, 5174, 5173];
+
+      for (const port of ports) {
         try {
-          await mainWindow.loadURL('http://localhost:5174');
-        } catch (err2) {
-          console.log('Vite not ready on 5174, trying 5173...');
-          try {
-            await mainWindow.loadURL('http://localhost:5173');
-          } catch (err3) {
-            console.log('Vite not ready, retrying in 1 second...');
-            setTimeout(loadDevServer, 1000);
-          }
+          console.log(`Trying to connect to Vite on port ${port}...`);
+          await mainWindow.loadURL(`http://localhost:${port}`);
+          console.log(`Connected to Vite dev server on port ${port}`);
+          return;
+        } catch (err) {
+          // Continue to next port
         }
       }
+
+      console.log('Failed to connect to Vite dev server on any port. Retrying...');
+      setTimeout(loadDevServer, 3000);
     };
 
     await loadDevServer();
@@ -535,6 +555,31 @@ ipcMain.handle('db:bulkUpdateShows', async (event, updates) => {
   return await db.bulkUpdateShows(updates);
 });
 
+// Verification status handlers
+ipcMain.handle('db:markShowAsVerified', async (event, showId, notes) => {
+  return await db.markShowAsVerified(showId, notes);
+});
+
+ipcMain.handle('db:markShowForReview', async (event, showId, notes) => {
+  return await db.markShowForReview(showId, notes);
+});
+
+ipcMain.handle('db:clearShowVerification', async (event, showId) => {
+  return await db.clearShowVerification(showId);
+});
+
+ipcMain.handle('db:getShowVerificationStatus', async (event, showId) => {
+  return await db.getShowVerificationStatus(showId);
+});
+
+ipcMain.handle('db:getUnverifiedShows', async () => {
+  return await db.getUnverifiedShows();
+});
+
+ipcMain.handle('db:getShowsNeedingReview', async () => {
+  return await db.getShowsNeedingReview();
+});
+
 // Archive.org data lookup
 const archiveLookup = new ArchiveOrgLookup();
 
@@ -681,6 +726,76 @@ function calculateSearchConfidence(searchQuery, releaseDetails) {
 
   return Math.min(confidence, 1.0);
 }
+
+// Handler to get real file metadata
+ipcMain.handle('file:getMetadata', async (event, filePath) => {
+  try {
+    const metadataExtractor = new MetadataExtractor();
+    const metadata = await metadataExtractor.extractMetadata(filePath);
+    console.log('Extracted metadata for', path.basename(filePath), ':', {
+      title: metadata.title,
+      artist: metadata.artist,
+      album: metadata.album,
+      duration: metadata.duration,
+      format: metadata.format,
+      bitrate: metadata.bitrate
+    });
+    return metadata;
+  } catch (error) {
+    console.error('Error extracting metadata:', error);
+    return null;
+  }
+});
+
+// IPC handler for fetching album cover
+ipcMain.handle('musicbrainz:fetchCover', async (event, releaseId) => {
+  try {
+    console.log('Fetching album cover for release:', releaseId);
+    const coverArt = await musicBrainzService.fetchAlbumCover(releaseId);
+    return coverArt;
+  } catch (error) {
+    console.error('Error fetching album cover:', error);
+    return null;
+  }
+});
+
+// IPC handler for audio fingerprint matching
+ipcMain.handle('musicbrainz:fingerprint', async (event, filePath) => {
+  try {
+    console.log('Fingerprint match request for:', filePath);
+
+    // Create import service instance
+    const importService = new ImportService(db);
+
+    // Get basic metadata first
+    const metadata = await importService.metadataExtractor.extractMetadata(filePath);
+
+    // Find best match with fingerprint
+    const match = await musicBrainzService.findBestMatchWithFingerprint(filePath, metadata);
+
+    if (match) {
+      console.log(`Fingerprint match found: ${match.title} (confidence: ${match.confidence})`);
+
+      // If we have a release ID, fetch full details including cover art
+      if (match.releaseId) {
+        try {
+          const releaseDetails = await musicBrainzService.getReleaseDetails(match.releaseId);
+          const coverArt = await musicBrainzService.fetchCoverArt(match.releaseId);
+
+          match.releaseDetails = releaseDetails;
+          match.coverArt = coverArt;
+        } catch (error) {
+          console.error('Error fetching release details:', error);
+        }
+      }
+    }
+
+    return match;
+  } catch (error) {
+    console.error('Fingerprint matching error:', error);
+    throw error;
+  }
+});
 
 // Simple string similarity calculation
 function calculateStringSimilarity(str1, str2) {

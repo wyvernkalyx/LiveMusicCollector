@@ -85,25 +85,53 @@ All database operations go through IPC handlers:
 
 ## Recent Updates
 
-### Audio Playback System
-- Implemented HTTP streaming server to handle FLAC files (Chromium doesn't support FLAC natively)
-- Added IPC handlers for audio file checking and URL generation
-- Fixed preload script to expose audio operations
+### Album Verification System
+- Added verification status tracking to prevent re-processing of verified albums
+- Database columns: `verified`, `verified_date`, `needs_review`, `review_notes`
+- UI indicators show verification status (green for verified, yellow for needs review)
+- "Mark as Verified" button locks albums from automatic fingerprinting
+- Fingerprinting prompts for confirmation on verified albums
+- Complete verification workflow with notes and review tracking
 
-### MusicBrainz Integration
-- Full API integration with release and recording search
+### Critical UX Fixes
+- **Auto-refresh after save**: Album view now refreshes automatically after saving changes
+- **Volume slider drag**: Fixed volume control to support proper drag functionality
+- **Grid column widths**: Expanded title column to minmax(300px, 3fr) for readability
+
+### Three-tier Data Architecture
+- Implemented Concert/Release/Track structure for managing live recordings
+- `concerts` table: Actual performance events (date, venue, setlist)
+- `releases` table: Commercial products/compilations containing recordings
+- `concert_recordings` junction table: Links concerts to their appearances on releases
+- Automatic parsing of concert info from MusicBrainz titles
+
+### Enhanced Metadata Management
+- Song title normalization with abbreviation expansion (NFA → Not Fade Away)
+- Proper title case formatting with exception handling
+- Automatic metadata persistence when applying MusicBrainz data
+- Support for multi-disc releases with proper track numbering
+
+### Audio Playback System
+- HTTP streaming server for FLAC files (Chromium doesn't support FLAC natively)
+- Volume control with drag support and visual handle
+- Auto-play next track in queue functionality
+- Proper play promise management to handle interruptions
+
+### MusicBrainz/AcoustID Integration
+- Audio fingerprinting using Chromaprint for track identification
+- Full MusicBrainz API integration with release and recording search
 - Cover Art Archive support for album artwork
 - Disc-based track numbering (101, 102 for disc 1; 201, 202 for disc 2)
 - Performance date extraction for live recordings
-- Confidence scoring for search results
+- Confidence scoring and quality assessment for matches
 
 ### UI/UX Improvements
 - Collapsible main navigation sidebar
-- Two-column album view with narrower sidebar (260px)
-- Fixed track table column alignment
-- Made title column wider for better readability
-- Added date editing capability in track list
-- MusicBrainz lookup available in both view and edit modes
+- Two-column album view with optimized sidebar (260px)
+- Enhanced track table with proper column spacing
+- Inline editing for all metadata fields
+- Drag-and-drop track reordering in edit mode
+- Visual indicators for playing tracks and segues
 
 ## Development Notes
 
@@ -112,3 +140,18 @@ All database operations go through IPC handlers:
 - The app follows non-destructive principles - original files are never modified
 - Library organization follows pattern: `/Band/Year/Date - Venue - (Source)/tracks`
 - Audio streaming server automatically starts on app launch for FLAC support
+
+## Development Environment
+- OS: Windows 10.0.26100
+- Shell: Git Bash
+- Path format: Windows (use forward slashes in Git Bash)
+- File system: Case-insensitive
+- Line endings: CRLF (configure Git autocrlf)
+
+## Playwright MCP Guide
+
+File paths:
+- Screenshots: `./CCimages/screenshots/`
+- PDFs: `./CCimages/pdfs/`
+
+Browser error fix: `npx playwright install`
