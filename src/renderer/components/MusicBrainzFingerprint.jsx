@@ -450,6 +450,7 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
   const [overallProgress, setOverallProgress] = useState(0);
   const [expandedMatches, setExpandedMatches] = useState({});
   const [showVerificationWarning, setShowVerificationWarning] = useState(false);
+  const [processingState, setProcessingState] = useState('initializing'); // 'initializing', 'ready', 'processing', 'completed'
 
   // Initialize tracks with fingerprint status
   useEffect(() => {
@@ -541,8 +542,8 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
 
     setTracks(tracksWithMetadata);
 
-    // Start the real fingerprinting process
-    startFingerprintingProcess(tracksWithMetadata);
+    // Don't automatically start fingerprinting - wait for user to click start
+    setProcessingState('ready');
   };
 
   // Start the real fingerprinting process
@@ -552,6 +553,7 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
     const processTrack = async () => {
       if (currentTrackIndex >= trackList.length) {
         console.log('\n=== ALL TRACKS PROCESSED ===');
+        setProcessingState('completed');
         return;
       }
 
@@ -631,6 +633,7 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
                 recordingId: fingerprintResult.recordingId,
                 releaseId: fingerprintResult.releaseId,
                 releases: fingerprintResult.releases || [], // All releases this recording appears on
+                status: fingerprintResult.status, // Include the status from the API
                 isLive: fingerprintResult.isLive,
                 releaseType: fingerprintResult.release?.['release-group']?.['primary-type'] || 'Unknown',
                 method: 'fingerprint',
@@ -638,6 +641,7 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
               };
               trackMatches.push(primaryMatch);
               console.log(`[TRACK ${trackId}] Primary match added:`, primaryMatch.title, primaryMatch.confidence + '%');
+              console.log(`[TRACK ${trackId}] Match status:`, primaryMatch.status || 'undefined');
             }
 
             // Add any additional recordings - also unique to THIS result
@@ -872,6 +876,35 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
       };
     }
 
+    // Try to extract from common patterns like "St. Louis '71 '72 '73"
+    const cityMatch = title.match(/(St\.\s*Louis|San Francisco|New York|Chicago|Philadelphia|Boston|Atlanta|Denver|Portland|Seattle|Los Angeles|Oakland)[,:]?\s*'?(\d{2})/);
+    if (cityMatch) {
+      const city = cityMatch[1].replace(/\s+/g, ' ').trim();
+      // Map common cities to states
+      const cityStateMap = {
+        'St. Louis': 'MO',
+        'San Francisco': 'CA',
+        'New York': 'NY',
+        'Chicago': 'IL',
+        'Philadelphia': 'PA',
+        'Boston': 'MA',
+        'Atlanta': 'GA',
+        'Denver': 'CO',
+        'Portland': 'OR',
+        'Seattle': 'WA',
+        'Los Angeles': 'CA',
+        'Oakland': 'CA'
+      };
+
+      return {
+        venue: null, // Will need to be filled from other sources
+        city: city,
+        state: cityStateMap[city] || null,
+        date: null, // Multiple dates in title
+        originalTitle: title
+      };
+    }
+
     return null;
   };
 
@@ -996,7 +1029,7 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
 
         // Check for compilation/box set
         if (bestMatch.releaseType === 'Compilation' || bestMatch.album?.includes('Box Set') ||
-            bestMatch.album?.includes('Compilation') || bestMatch.album?.includes('Enjoying the Ride')) {
+            bestMatch.album?.includes('Compilation')) {
           isCompilation = true;
           console.warn(`⚠ Track matched to compilation/box set: ${bestMatch.album}`);
         }
@@ -1093,12 +1126,113 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
       }
     }
 
+    // Check if any of the matched releases are official
+    let isOfficialRelease = false;
+    console.log('=== CHECKING FOR OFFICIAL RELEASES ===');
+    matchedTracks.forEach((track, trackIndex) => {
+      if (track.matches && track.matches.length > 0) {
+        const bestMatch = track.matches[0];
+        console.log(`Track ${trackIndex + 1} best match:`, bestMatch.title);
+        if (bestMatch.releases) {
+          console.log(`  Has ${bestMatch.releases.length} releases:`);
+          bestMatch.releases.forEach((release, idx) => {
+            console.log(`    ${idx + 1}. "${release.title}" - Status: ${release.status}, Type: ${release.type}`);
+
+            // Check multiple ways to detect official release
+            // Log the raw release data to understand what we're getting
+            if (idx === 0) {
+              console.log('    Full release object:', JSON.stringify(release, null, 2));
+            }
+
+            const isOfficial =
+              release.status === 'Official' ||
+              release.status === 'official' ||
+              (!release.status && release.type !== 'Bootleg') || // If no status but not a bootleg type
+              (!release.status && !release.type) || // If neither field exists, assume official
+              (release.title && release.title.includes('(Official')) ||
+              (release.title && (
+                release.title.includes("Dave's Picks") ||
+                release.title.includes("Dick's Picks") ||
+                release.title.includes("Road Trips") ||
+                release.title.includes("Truckin' Up to Buffalo") ||
+                release.title.includes("Truckin' Up to Buffalo") ||
+                release.title.includes("Winterland") ||
+                release.title.includes("Fillmore") ||
+                release.title.includes("Europe '72") ||
+                release.title.includes("Sunshine Daydream") ||
+                release.title.includes("Alpine Valley")
+              ));
+
+            if (isOfficial) {
+              isOfficialRelease = true;
+              console.log(`    ✓ FOUND OFFICIAL RELEASE! (status: ${release.status}, type: ${release.type})`);
+            }
+          });
+        } else {
+          console.log('  No releases data available');
+        }
+      }
+    });
+    console.log('Final isOfficialRelease:', isOfficialRelease);
+    console.log('=====================================');
+
+    // Find the actual status value from releases
+    let actualStatus = null;
+    console.log('=== SEARCHING FOR STATUS IN MATCHED TRACKS ===');
+    console.log('Number of matched tracks:', matchedTracks.length);
+
+    matchedTracks.forEach((track, trackIdx) => {
+      if (track.matches && track.matches[0] && !actualStatus) {
+        const bestMatch = track.matches[0];
+        console.log(`Track ${trackIdx + 1} best match:`, {
+          title: bestMatch.title,
+          hasStatus: !!bestMatch.status,
+          status: bestMatch.status,
+          hasReleases: !!bestMatch.releases,
+          releasesCount: bestMatch.releases?.length
+        });
+
+        // Check if the match itself has status information
+        if (bestMatch.status) {
+          actualStatus = bestMatch.status;
+          if (actualStatus === 'Official') {
+            isOfficialRelease = true;
+          }
+          console.log(`✓ Found status directly on match: ${actualStatus}`);
+        }
+
+        // Check if the match has release information
+        if (!actualStatus && bestMatch.releases) {
+          const officialRelease = bestMatch.releases.find(r => r.status === 'Official');
+          if (officialRelease) {
+            actualStatus = 'Official';
+            isOfficialRelease = true;
+            console.log('✓ Found official release in releases array:', officialRelease.title);
+          } else if (bestMatch.releases[0]) {
+            actualStatus = bestMatch.releases[0].status || null;
+            // If any release has 'Official' status, mark as official
+            if (actualStatus === 'Official') {
+              isOfficialRelease = true;
+            }
+            console.log(`✓ Using first release status: ${actualStatus}`);
+          }
+        }
+      }
+    });
+    console.log('Actual MusicBrainz status value:', actualStatus);
+    console.log('Is official release:', isOfficialRelease);
+    console.log('DEBUG: Status detection summary:');
+    console.log('  - actualStatus:', actualStatus);
+    console.log('  - isOfficialRelease:', isOfficialRelease);
+    console.log('  - First match status:', matchedTracks[0]?.matches?.[0]?.status);
+
     // Prepare the album-level data structure expected by handleMusicBrainzApply
     const mbData = {
       artist: commonArtist || initialData?.artist || 'Grateful Dead',
       album: normalizedTitle || commonAlbum || initialData?.album || 'Unknown Album',
       date: concertInfo?.date || releaseYear || initialData?.date,
-      isOfficialRelease: false, // Fingerprinting usually finds live recordings
+      isOfficialRelease: isOfficialRelease,
+      status: actualStatus, // Pass through the actual MusicBrainz status value
       isLive: true,
       releaseType: isCompilation ? 'Compilation' : 'Live',
       discCount: 1,
@@ -1109,7 +1243,8 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
         title: commonAlbum,
         year: releaseYear,
         mbid: commonReleaseId,
-        isCompilation: isCompilation
+        isCompilation: isCompilation,
+        status: actualStatus // Also add status to releaseInfo
       },
       originalAlbum: commonAlbum, // Keep original album name for reference
       performanceDate: concertInfo?.date,
@@ -1152,6 +1287,8 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
     if (onApply && typeof onApply === 'function') {
       try {
         console.log('Calling onApply callback with album data structure:', mbData);
+        console.log('CRITICAL: mbData.status being sent:', mbData.status);
+        console.log('CRITICAL: mbData.isOfficialRelease being sent:', mbData.isOfficialRelease);
         await onApply(mbData);
         console.log('✅ Successfully applied matches');
         onClose(); // Close the dialog after successful apply
@@ -1349,16 +1486,41 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
             )}
           </div>
           <div className="actions">
-            <button className="secondary" onClick={() => console.log('Manual search not yet implemented')}>
-              Try Manual Search
-            </button>
-            <button
-              className="primary"
-              disabled={stats.matched === 0}
-              onClick={() => handleApplyMatches()}
-            >
-              Apply {stats.matched} Matches
-            </button>
+            {processingState === 'ready' || (stats.skipped === tracks.length && tracks.length > 0) ? (
+              <>
+                <button className="primary" onClick={() => {
+                  setProcessingState('processing');
+                  startFingerprintingProcess(tracks);
+                }}>
+                  Start Fingerprinting
+                </button>
+                <button className="secondary" onClick={onClose}>
+                  Cancel
+                </button>
+              </>
+            ) : processingState === 'processing' ? (
+              <>
+                <button className="secondary" disabled>
+                  Processing...
+                </button>
+                <button className="secondary" onClick={onClose}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="secondary" onClick={() => console.log('Manual search not yet implemented')}>
+                  Try Manual Search
+                </button>
+                <button
+                  className="primary"
+                  disabled={stats.matched === 0}
+                  onClick={() => handleApplyMatches()}
+                >
+                  Apply {stats.matched} Matches
+                </button>
+              </>
+            )}
           </div>
         </Footer>
       </Dialog>

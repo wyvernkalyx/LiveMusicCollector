@@ -214,9 +214,9 @@ ipcMain.handle('dialog:openFiles', async () => {
 });
 
 // Import operations
-ipcMain.handle('import:analyzeFiles', async (event, filePaths) => {
+ipcMain.handle('import:analyzeFiles', async (event, filePaths, options = {}) => {
   const importService = new ImportService(db);
-  return await importService.analyzeFiles(filePaths);
+  return await importService.analyzeFiles(filePaths, options);
 });
 
 // Folder scanning
@@ -242,6 +242,12 @@ ipcMain.handle('import:scanFolder', async (event, folderPath, options) => {
 });
 
 ipcMain.handle('import:processFiles', async (event, files, options) => {
+  console.log('\n\n=====================================');
+  console.log('=== IMPORT:PROCESSFILES HANDLER CALLED ===');
+  console.log('=====================================');
+  console.log('Files count:', files.length);
+  console.log('Options:', JSON.stringify(options, null, 2));
+
   const importService = new ImportService(db);
   const normalizationService = new NormalizationService(db);
   const OfficialReleaseDetector = require('./services/officialReleases');
@@ -252,14 +258,53 @@ ipcMain.handle('import:processFiles', async (event, files, options) => {
   let officialAlbumName = null;
 
   // First, analyze all files to get metadata
-  console.log(`Analyzing ${files.length} files for import...`);
+  console.log(`\nAnalyzing ${files.length} files for import...`);
+  console.log('Import options received:', options);
+  console.log('Fingerprinting enabled?', options.enableFingerprinting);
+
   const analyzedFiles = [];
   for (const file of files) {
     if (file.path) {
-      const analyzed = await importService.analyzeFiles([file.path]);
+      // First get basic metadata without fingerprinting
+      const analyzed = await importService.analyzeFiles([file.path], { ...options, enableFingerprinting: false });
       if (analyzed && analyzed.length > 0) {
-        const fileData = { ...file, ...analyzed[0] };
-        console.log(`Analyzed file: ${path.basename(file.path)}, album: ${fileData.album}`);
+        let fileData = { ...file, ...analyzed[0] };
+
+        // If fingerprinting is enabled, do it here directly (like the working MusicBrainz lookup)
+        if (options.enableFingerprinting) {
+          console.log(`\n🎵 Running fingerprint for: ${path.basename(file.path)}`);
+          try {
+            // Use the same service that the working MusicBrainz lookup uses
+            const fingerprintMatch = await musicBrainzService.findBestMatchWithFingerprint(file.path, fileData);
+
+            if (fingerprintMatch && fingerprintMatch.confidence >= 0.7) {
+              console.log(`✅ FINGERPRINT MATCH: "${fingerprintMatch.title}" (confidence: ${fingerprintMatch.confidence})`);
+
+              // Apply the matched data
+              fileData.title = fingerprintMatch.title;
+              fileData.artist = fingerprintMatch.artist || fileData.artist;
+              fileData.album = fingerprintMatch.album || fileData.album;
+              fileData.fingerprintMatch = fingerprintMatch;
+              fileData.fingerprintingSuccessful = true;
+              fileData.fingerprintingAttempted = true;
+
+              // Set release status if available
+              if (fingerprintMatch.status) {
+                fileData.releaseStatus = fingerprintMatch.status.toUpperCase();
+              }
+            } else {
+              console.log('❌ No confident fingerprint match found');
+              fileData.fingerprintingAttempted = true;
+              fileData.fingerprintingSuccessful = false;
+            }
+          } catch (error) {
+            console.error('Fingerprinting error:', error.message);
+            fileData.fingerprintingAttempted = true;
+            fileData.fingerprintingSuccessful = false;
+          }
+        }
+
+        console.log(`📀 Analyzed: ${path.basename(file.path)} -> Title: "${fileData.title}", Album: "${fileData.album}"`);
         analyzedFiles.push(fileData);
       }
     }
@@ -355,8 +400,13 @@ ipcMain.handle('import:processFiles', async (event, files, options) => {
 
       // Use pre-analyzed metadata
       let fileWithMetadata = analyzedFiles.find(af => af.path === file.path) || file;
-      console.log('Processing file with metadata:', fileWithMetadata.path);
-      console.log('Initial album:', fileWithMetadata.album);
+      console.log('\n>>> Processing file with metadata:', path.basename(fileWithMetadata.path));
+      console.log('  Title from analysis:', fileWithMetadata.title);
+      console.log('  Album:', fileWithMetadata.album);
+      console.log('  Fingerprinting successful?', fileWithMetadata.fingerprintingSuccessful);
+      if (fileWithMetadata.fingerprintMatch) {
+        console.log('  Fingerprint match title:', fileWithMetadata.fingerprintMatch.title);
+      }
 
       // If this is an official release, ensure consistent album naming for ALL files
       if (officialRelease && officialAlbumName) {
@@ -385,6 +435,9 @@ ipcMain.handle('import:processFiles', async (event, files, options) => {
       }
 
       // Import the file with consistent metadata
+      console.log('\n=== BEFORE IMPORT ===');
+      console.log('Title being sent to importFile:', fileWithMetadata.title);
+      console.log('Album:', fileWithMetadata.album);
       const imported = await importService.importFile(fileWithMetadata, options);
       if (options.autoNormalize && imported.id) {
         await normalizationService.normalizeRecording(imported.id);
@@ -528,17 +581,24 @@ ipcMain.handle('db:getTracksByShow', async (event, showId) => {
   return await db.getTracksByShow(showId);
 });
 
-ipcMain.handle('db:bulkUpdateTracks', async (event, trackIds, metadata) => {
+ipcMain.handle('db:bulkUpdateTracks', async (event, updates) => {
   const results = [];
-  for (const trackId of trackIds) {
-    try {
-      await db.updateTrackMetadata(trackId, metadata);
-      results.push({ trackId, success: true });
-    } catch (error) {
-      console.error(`Error updating track ${trackId}:`, error);
-      results.push({ trackId, success: false, error: error.message });
+
+  // Handle array of {trackId, updates} objects from MetadataEditor
+  if (Array.isArray(updates)) {
+    for (const update of updates) {
+      if (update.trackId && update.updates) {
+        try {
+          await db.updateTrack(update.trackId, update.updates);
+          results.push({ trackId: update.trackId, success: true });
+        } catch (error) {
+          console.error(`Error updating track ${JSON.stringify(update)}:`, error);
+          results.push({ trackId: update.trackId, success: false, error: error.message });
+        }
+      }
     }
   }
+
   return results;
 });
 
@@ -546,9 +606,16 @@ ipcMain.handle('db:updateTrack', async (event, trackId, updates) => {
   return await db.updateTrack(trackId, updates);
 });
 
+ipcMain.handle('db:updateRecordingByShowId', async (event, showId, updates) => {
+  return await db.updateRecordingByShowId(showId, updates);
+});
+
 // Database management
 ipcMain.handle('db:clearAll', async () => {
-  return await db.clearAllData();
+  console.log('=== CLEAR DATABASE HANDLER CALLED ===');
+  const result = await db.clearAllData();
+  console.log('Clear database result:', result);
+  return result;
 });
 
 ipcMain.handle('db:bulkUpdateShows', async (event, updates) => {

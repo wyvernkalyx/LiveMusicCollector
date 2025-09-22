@@ -13,47 +13,98 @@ class ImportService {
     this.musicBrainzService = new MusicBrainzService();
   }
 
-  async analyzeFiles(filePaths) {
+  async analyzeFiles(filePaths, options = {}) {
     const results = [];
+    const { enableFingerprinting = false } = options;
+
+    console.log('=== ANALYZE FILES CALLED ===');
+    console.log('Options received:', options);
+    console.log('Fingerprinting enabled?', enableFingerprinting);
 
     for (const filePath of filePaths) {
       try {
         // Use the enhanced metadata extractor
         const metadata = await this.metadataExtractor.extractMetadata(filePath);
+        console.log('Basic metadata extracted:', { title: metadata.title, artist: metadata.artist });
 
-        // Try to find matches using audio fingerprinting
-        console.log('Attempting audio fingerprint matching for:', path.basename(filePath));
-        const fingerprintMatch = await this.musicBrainzService.findBestMatchWithFingerprint(filePath, {
-          artist: metadata.artist,
-          title: metadata.title,
-          album: metadata.album
-        });
+        let fingerprintMatch = null;
 
-        if (fingerprintMatch) {
-          console.log(`Fingerprint match found: ${fingerprintMatch.title} by ${fingerprintMatch.artist} (confidence: ${fingerprintMatch.confidence})`);
+        // Only do fingerprinting if enabled
+        if (enableFingerprinting) {
+          // Try to find matches using audio fingerprinting
+          console.log('FINGERPRINTING ENABLED - Attempting audio fingerprint matching for:', path.basename(filePath));
+          fingerprintMatch = await this.musicBrainzService.findBestMatchWithFingerprint(filePath, {
+            artist: metadata.artist,
+            title: metadata.title,
+            album: metadata.album
+          });
 
-          // Merge fingerprint data with metadata
-          if (fingerprintMatch.confidence >= 0.7) {
-            metadata.artist = fingerprintMatch.artist || metadata.artist;
-            metadata.title = fingerprintMatch.title || metadata.title;
-            metadata.musicBrainzRecordingId = fingerprintMatch.recordingId;
-            metadata.musicBrainzReleaseId = fingerprintMatch.releaseId;
-            metadata.fingerprintMatch = fingerprintMatch;
+          if (fingerprintMatch) {
+            console.log(`FINGERPRINT MATCH FOUND!`);
+            console.log(`  Title: ${fingerprintMatch.title}`);
+            console.log(`  Artist: ${fingerprintMatch.artist}`);
+            console.log(`  Album: ${fingerprintMatch.album}`);
+            console.log(`  Confidence: ${fingerprintMatch.confidence}`);
+            console.log(`  Status: ${fingerprintMatch.status}`);
 
-            // Check if it's a live recording
-            if (fingerprintMatch.isLive) {
-              metadata.isLiveRecording = true;
+            // Merge fingerprint data with metadata
+            if (fingerprintMatch.confidence >= 0.7) {
+              console.log('Confidence >= 0.7, applying match data to metadata');
+              metadata.artist = fingerprintMatch.artist || metadata.artist;
+              metadata.title = fingerprintMatch.title || metadata.title;
+              metadata.album = fingerprintMatch.album || metadata.album;
+              metadata.musicBrainzRecordingId = fingerprintMatch.recordingId;
+              metadata.musicBrainzReleaseId = fingerprintMatch.releaseId;
+              metadata.fingerprintMatch = fingerprintMatch;
+
+              // Check if it's a live recording
+              if (fingerprintMatch.isLive) {
+                metadata.isLiveRecording = true;
+              }
+
+              // Apply release status from fingerprint match
+              if (fingerprintMatch.status) {
+                metadata.releaseStatus = fingerprintMatch.status;
+              }
+
+              // Apply venue info if available
+              if (fingerprintMatch.venue) {
+                metadata.venue = fingerprintMatch.venue;
+              }
+
+              console.log('Updated metadata:', {
+                title: metadata.title,
+                artist: metadata.artist,
+                album: metadata.album,
+                releaseStatus: metadata.releaseStatus
+              });
+            } else {
+              console.log('Confidence too low, not applying match');
             }
+          } else {
+            console.log('No fingerprint match found');
           }
+        } else {
+          console.log('FINGERPRINTING DISABLED for:', path.basename(filePath));
         }
 
         // Suggest show match based on extracted metadata
         const suggested = await this.suggestShowMatch(metadata);
 
+        // Debug: Log what we're about to return
+        console.log('About to push to results:', {
+          title: metadata.title,
+          hasTitle: !!metadata.title,
+          fingerprintMatch: !!fingerprintMatch,
+          fingerprintMatchTitle: fingerprintMatch?.title
+        });
+
         results.push({
           ...metadata,
           suggested,
-          fingerprintMatch
+          fingerprintMatch,
+          fingerprintingAttempted: enableFingerprinting,
+          fingerprintingSuccessful: enableFingerprinting && !!fingerprintMatch
         });
       } catch (error) {
         console.error('Error analyzing file:', filePath, error);
@@ -69,6 +120,27 @@ class ImportService {
   }
 
   async importFile(fileInfo, options = {}) {
+    console.log('=== IMPORT FILE CALLED ===');
+    console.log('FileInfo received:', {
+      path: fileInfo.path,
+      title: fileInfo.title,
+      artist: fileInfo.artist,
+      album: fileInfo.album,
+      fingerprintMatch: fileInfo.fingerprintMatch,
+      fingerprintingAttempted: fileInfo.fingerprintingAttempted,
+      fingerprintingSuccessful: fileInfo.fingerprintingSuccessful
+    });
+
+    // Debug: Check if title exists at the very start
+    if (!fileInfo.title) {
+      console.error('WARNING: fileInfo.title is undefined at start of importFile!');
+      // Try to get title from fingerprintMatch if available
+      if (fileInfo.fingerprintMatch && fileInfo.fingerprintMatch.title) {
+        console.log('Recovering title from fingerprintMatch:', fileInfo.fingerprintMatch.title);
+        fileInfo.title = fileInfo.fingerprintMatch.title;
+      }
+    }
+
     const { copyToLibrary = true, libraryPath = '' } = options;
 
     // Check if album metadata indicates an official release
@@ -88,22 +160,34 @@ class ImportService {
       }
     }
 
+    console.log('After official check, title is:', fileInfo.title);
+
     // Check if this is an official release using enhanced detection
     if (!fileInfo.isOfficialRelease) {
       const officialMatch = await this.releaseDetector.detectOfficialReleaseEnhanced(fileInfo.path, fileInfo);
       if (officialMatch && officialMatch.matched) {
         console.log('Official release detected:', officialMatch.release.name, '(method:', officialMatch.matchType, ')');
         // Merge official metadata with file info
+        // Only override title if we don't have a fingerprint match
+        const shouldOverrideTitle = !fileInfo.fingerprintingSuccessful && officialMatch.track?.title;
+
+        // Preserve the title from fingerprinting if it exists
+        const preservedTitle = fileInfo.title;
+        const preservedArtist = fileInfo.artist;
+        const preservedAlbum = fileInfo.album;
+
         fileInfo = {
           ...fileInfo,
           ...officialMatch.metadata,
-          album: officialMatch.release.name,
-          title: officialMatch.track.title,
-          trackNumber: officialMatch.track.trackNumber,
-          disc: officialMatch.track.disc,
+          album: preservedAlbum || officialMatch.release.name,
+          title: shouldOverrideTitle ? officialMatch.track.title : preservedTitle,
+          artist: preservedArtist || officialMatch.metadata?.artist,
+          trackNumber: officialMatch.track?.trackNumber || fileInfo.trackNumber,
+          disc: officialMatch.track?.disc || fileInfo.disc,
           officialRelease: officialMatch,
           isOfficialRelease: true
         };
+        console.log('After official match, title is:', fileInfo.title);
       }
     }
 
@@ -198,9 +282,14 @@ class ImportService {
 
     console.log('Recording ID:', recordingId);
 
-    // Create track entry (title already has date suffix if it's an official release)
+    // Create track entry - use fingerprint matched title if available
     const trackNumber = fileInfo.trackNumber || 1;
-    const songTitle = fileInfo.title || 'Unknown Track'; // Title already modified if official release
+    const songTitle = fileInfo.title || 'Unknown Track';
+
+    console.log('=== CREATING TRACK ENTRY ===');
+    console.log('Track title to be saved:', songTitle);
+    console.log('Was fingerprinting successful?', fileInfo.fingerprintingSuccessful);
+
     const songId = await this.findOrCreateSong(songTitle, fileInfo.artist);
 
     console.log('Creating track:', {
@@ -216,7 +305,8 @@ class ImportService {
       trackNumber,
       songId,
       Math.floor(fileInfo.duration || 0),
-      finalPath
+      finalPath,
+      songTitle  // Pass the song title directly
     );
 
     console.log('Track created with ID:', trackId);
@@ -224,15 +314,46 @@ class ImportService {
     // Calculate checksums for the track
     const checksums = await this.releaseDetector.calculateChecksums(fileInfo.path);
 
-    // Store format info and checksums
+    // Store format info, checksums, and performance date if available
+    const trackUpdateFields = ['file_format = ?', 'bitrate = ?', 'checksum_md5 = ?', 'checksum_sha256 = ?'];
+    const trackUpdateValues = [fileInfo.format, fileInfo.bitrate, checksums.md5, checksums.sha256];
+
+    // Add performance date if available from fingerprint match
+    if (fileInfo.performanceDate || fileInfo.recordingDate ||
+        fileInfo.fingerprintMatch?.performanceDate || fileInfo.fingerprintMatch?.recordingDate) {
+      trackUpdateFields.push('performance_date = ?');
+      trackUpdateValues.push(
+        fileInfo.performanceDate ||
+        fileInfo.fingerprintMatch?.performanceDate ||
+        fileInfo.recordingDate ||
+        fileInfo.fingerprintMatch?.recordingDate
+      );
+    }
+
+    // Add MusicBrainz IDs if available
+    if (fileInfo.fingerprintMatch?.recordingId) {
+      trackUpdateFields.push('mb_recording_id = ?');
+      trackUpdateValues.push(fileInfo.fingerprintMatch.recordingId);
+    }
+    if (fileInfo.fingerprintMatch?.releaseId) {
+      trackUpdateFields.push('mb_release_id = ?');
+      trackUpdateValues.push(fileInfo.fingerprintMatch.releaseId);
+    }
+
+    trackUpdateValues.push(recordingId, trackNumber);
+
     await this.db.runAsync(
-      `UPDATE tracks
-       SET file_format = ?, bitrate = ?, checksum_md5 = ?, checksum_sha256 = ?
-       WHERE recording_id = ? AND track_number = ?`,
-      [fileInfo.format, fileInfo.bitrate, checksums.md5, checksums.sha256, recordingId, trackNumber]
+      `UPDATE tracks SET ${trackUpdateFields.join(', ')} WHERE recording_id = ? AND track_number = ?`,
+      trackUpdateValues
     );
 
     console.log('Track created for recording:', recordingId);
+
+    // Update show with fingerprint data if available
+    if (fileInfo.fingerprintingSuccessful && showId) {
+      console.log('Updating show with fingerprint data...');
+      await this.updateShowWithFingerprintData(showId, fileInfo);
+    }
 
     return {
       id: recordingId,
@@ -290,9 +411,92 @@ class ImportService {
     };
   }
 
+  async updateShowWithFingerprintData(showId, fileInfo) {
+    console.log('=== UPDATE SHOW WITH FINGERPRINT DATA ===');
+    console.log('Show ID:', showId);
+    console.log('Release Status:', fileInfo.releaseStatus);
+    console.log('Album:', fileInfo.album);
+
+    const updates = [];
+    const values = [];
+
+    // Update release status if available
+    if (fileInfo.releaseStatus) {
+      updates.push('release_status = ?');
+      values.push(fileInfo.releaseStatus.toUpperCase());
+      console.log('Will update release_status to:', fileInfo.releaseStatus.toUpperCase());
+    }
+
+    // Update album notes if available and not already set
+    if (fileInfo.album) {
+      const show = await this.db.getAsync('SELECT notes FROM shows WHERE id = ?', [showId]);
+      if (!show.notes || show.notes === 'Unknown Album') {
+        updates.push('notes = ?');
+        values.push(fileInfo.album);
+      }
+    }
+
+    // Update MusicBrainz Release ID if available
+    if (fileInfo.fingerprintMatch && fileInfo.fingerprintMatch.releaseId) {
+      updates.push('musicbrainz_release_id = ?');
+      values.push(fileInfo.fingerprintMatch.releaseId);
+      console.log('Will update MusicBrainz Release ID:', fileInfo.fingerprintMatch.releaseId);
+
+      // Also try to get artwork
+      try {
+        const coverArt = await this.musicBrainzService.fetchCoverArt(fileInfo.fingerprintMatch.releaseId);
+        if (coverArt && coverArt.medium) {
+          updates.push('artwork = ?');
+          values.push(coverArt.medium);
+          console.log('Will update artwork URL from MusicBrainz');
+        }
+      } catch (error) {
+        console.log('Could not fetch cover art:', error.message);
+      }
+    }
+
+    // Update venue if we have better info from fingerprinting
+    if (fileInfo.venue && fileInfo.venue !== 'Unknown Venue') {
+      const venueId = await this.findOrCreateVenue(
+        fileInfo.venue,
+        fileInfo.city,
+        fileInfo.state
+      );
+      if (venueId) {
+        updates.push('venue_id = ?');
+        values.push(venueId);
+      }
+    }
+
+    if (updates.length > 0) {
+      values.push(showId);
+      console.log('Executing UPDATE with values:', values);
+      console.log('SQL:', `UPDATE shows SET ${updates.join(', ')} WHERE id = ?`);
+      await this.db.runAsync(
+        `UPDATE shows SET ${updates.join(', ')} WHERE id = ?`,
+        values
+      );
+      console.log('Updated show', showId, 'with fingerprint data');
+    } else {
+      console.log('No updates to apply for show', showId);
+    }
+  }
+
   async findOrCreateShow(fileInfo, venueId) {
     const band = await this.getOrCreateBand(fileInfo.artist || 'Grateful Dead');
-    const date = fileInfo.date || '1970-01-01';
+
+    // Try to get performance date from various sources
+    let date = fileInfo.performanceDate || fileInfo.recordingDate || fileInfo.date;
+
+    // Check fingerprint match data for dates
+    if (fileInfo.fingerprintMatch) {
+      date = fileInfo.fingerprintMatch.performanceDate ||
+             fileInfo.fingerprintMatch.recordingDate ||
+             date;
+    }
+
+    // Store release date separately if it's different from performance date
+    const releaseDate = fileInfo.releaseDate || fileInfo.fingerprintMatch?.releaseDate
 
     // For official releases, create a single show entry for the entire release
     const isOfficialRelease = fileInfo.isOfficialRelease ||
@@ -315,31 +519,35 @@ class ImportService {
         return existingRelease.id;
       }
 
-      // For official releases, use the release year or current date
-      let releaseDate = date; // Use the track's date if available
+      // For official releases, use release date for the show date
+      // But we'll store performance dates on individual tracks
+      let showDate = releaseDate || date;
 
-      // If no valid date, try to extract from metadata or use current date
-      if (!releaseDate || releaseDate === '1970-01-01') {
+      // If no valid date, try to extract from metadata
+      if (!showDate) {
         // Try to extract year from album title or metadata
         const yearMatch = fileInfo.album?.match(/\b(19\d{2}|20\d{2})\b/);
         if (yearMatch) {
-          releaseDate = `${yearMatch[1]}-01-01`;
+          showDate = `${yearMatch[1]}-01-01`;
         } else if (fileInfo.year) {
-          releaseDate = `${fileInfo.year}-01-01`;
+          showDate = `${fileInfo.year}-01-01`;
         } else {
           // Use current date as last resort
           const now = new Date();
-          releaseDate = now.toISOString().split('T')[0];
+          showDate = now.toISOString().split('T')[0];
         }
       }
 
       // Create a new show entry for this release
-      const newShowId = await this.db.createShow(band.id, releaseDate, venueId);
+      const newShowId = await this.db.createShow(band.id, showDate, venueId);
 
-      // Update the show with album info in notes (exact match for future lookups)
+      // Update the show with album info in notes and release status if available
+      const releaseStatus = fileInfo.releaseStatus ? fileInfo.releaseStatus.toUpperCase() :
+                           (isOfficialRelease ? 'OFFICIAL' : 'BOOTLEG');
+
       await this.db.runAsync(
-        `UPDATE shows SET notes = ? WHERE id = ?`,
-        [fileInfo.album, newShowId]
+        `UPDATE shows SET notes = ?, release_status = ? WHERE id = ?`,
+        [fileInfo.album, releaseStatus, newShowId]
       );
 
       console.log('Created new release show:', newShowId, 'for album:', fileInfo.album);
@@ -347,6 +555,19 @@ class ImportService {
     }
 
     // Standard show matching logic
+    // If we don't have a date, we can't create or match a show properly
+    if (!date) {
+      console.warn('Cannot create show without date for:', fileInfo.path);
+      // Try to extract date from filename or use a placeholder
+      const dateFromFile = this.parseDate(fileInfo.filename) || this.parseDate(fileInfo.path);
+      if (dateFromFile) {
+        console.log('Extracted date from filename:', dateFromFile);
+        return this.findOrCreateShow({...fileInfo, date: dateFromFile}, venueId);
+      }
+      // Skip this file if no date can be determined
+      return null;
+    }
+
     const existingShows = await this.db.getShowsByDate(date);
 
     // If venue provided, try to match
@@ -354,6 +575,12 @@ class ImportService {
       for (const show of existingShows) {
         if (show.venue_id === venueId) {
           console.log('Found existing show with matching venue:', show.id);
+
+          // Update existing show with fingerprint metadata if available
+          if (fileInfo.fingerprintingSuccessful || fileInfo.releaseStatus || fileInfo.album) {
+            await this.updateShowWithFingerprintData(show.id, fileInfo);
+          }
+
           return show.id;
         }
       }
@@ -362,11 +589,39 @@ class ImportService {
     // If we have any show on this date and no specific venue, use it
     if (existingShows.length > 0) {
       console.log('Found existing show on date:', existingShows[0].id);
+
+      // Update existing show with fingerprint metadata if available
+      if (fileInfo.fingerprintingSuccessful || fileInfo.releaseStatus || fileInfo.album) {
+        await this.updateShowWithFingerprintData(existingShows[0].id, fileInfo);
+      }
+
       return existingShows[0].id;
     }
 
-    // Create new show
+    // Create new show (date is required and validated above)
     const newShowId = await this.db.createShow(band.id, date, venueId);
+
+    // Update the new show with all fingerprint data including artwork
+    if (fileInfo.fingerprintingSuccessful) {
+      await this.updateShowWithFingerprintData(newShowId, fileInfo);
+    } else {
+      // Set release status if we have it from fingerprinting
+      if (fileInfo.releaseStatus) {
+        await this.db.runAsync(
+          `UPDATE shows SET release_status = ? WHERE id = ?`,
+          [fileInfo.releaseStatus.toUpperCase(), newShowId]
+        );
+      }
+
+      // If we have album info from fingerprinting, add it to notes
+      if (fileInfo.album) {
+        await this.db.runAsync(
+          `UPDATE shows SET notes = ? WHERE id = ?`,
+          [fileInfo.album, newShowId]
+        );
+      }
+    }
+
     console.log('Created new show:', newShowId, 'for date:', date);
     return newShowId;
   }
@@ -466,7 +721,21 @@ class ImportService {
     }
 
     const band = metadata.artist || 'Grateful Dead';
-    const date = metadata.date || 'Unknown-Date';
+
+    // Try to get performance date from various sources
+    let date = metadata.performanceDate || metadata.recordingDate || metadata.date;
+
+    // If we have fingerprint match data with a performance date, prefer that
+    if (metadata.fingerprintMatch?.performanceDate) {
+      date = metadata.fingerprintMatch.performanceDate;
+    } else if (metadata.fingerprintMatch?.recordingDate) {
+      date = metadata.fingerprintMatch.recordingDate;
+    }
+
+    // Fall back to parsing from filename if no date found
+    if (!date) {
+      date = this.parseDate(metadata.filename) || this.parseDate(metadata.path) || 'Unknown-Date';
+    }
 
     // Check if this is an official release or box set
     const isOfficialRelease = options?.isOfficialRelease ||
@@ -565,10 +834,27 @@ class ImportService {
 
     const dateStr = dateInput.toString();
 
+    // Try MMDDYY format like "101772" (October 17, 1972)
+    const mmddyyMatch = dateStr.match(/(\d{2})(\d{2})(\d{2})(?!\d)/);
+    if (mmddyyMatch) {
+      const [_, month, day, yearShort] = mmddyyMatch;
+      const year = parseInt(yearShort) > 50 ? '19' + yearShort : '20' + yearShort;
+      // Validate the date components
+      const monthNum = parseInt(month);
+      const dayNum = parseInt(day);
+      if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+        console.log(`Parsed date from MMDDYY format: ${dateStr} -> ${year}-${month}-${day}`);
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      }
+    }
+
+    // Try standard patterns
     const patterns = [
-      /(\d{4})-(\d{2})-(\d{2})/,
-      /(\d{2})\/(\d{2})\/(\d{4})/,
-      /(\d{2})-(\d{2})-(\d{2})/
+      /(\d{4})-(\d{2})-(\d{2})/,     // YYYY-MM-DD
+      /(\d{2})\/(\d{2})\/(\d{4})/,   // MM/DD/YYYY
+      /(\d{2})-(\d{2})-(\d{2})/,      // MM-DD-YY or YY-MM-DD
+      /(\d{4})(\d{2})(\d{2})/,        // YYYYMMDD
+      /(\d{1,2})\/(\d{1,2})\/(\d{2})/ // M/D/YY or MM/DD/YY
     ];
 
     for (const pattern of patterns) {
@@ -582,13 +868,26 @@ class ImportService {
           year = parseInt(match[1]) > 50 ? '19' + match[1] : '20' + match[1];
           month = match[2];
           day = match[3];
-        } else if (match[3].length === 4) {
+        } else if (match[3] && match[3].length === 4) {
           year = match[3];
           month = match[1];
           day = match[2];
+        } else if (match[3] && match[3].length === 2) {
+          // MM/DD/YY format
+          year = parseInt(match[3]) > 50 ? '19' + match[3] : '20' + match[3];
+        } else if (match[1].length === 8) {
+          // YYYYMMDD format
+          year = match[1].substring(0, 4);
+          month = match[1].substring(4, 6);
+          day = match[1].substring(6, 8);
         }
 
-        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        // Validate month and day
+        const monthNum = parseInt(month);
+        const dayNum = parseInt(day);
+        if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
       }
     }
 

@@ -18,6 +18,7 @@ import {
   MessageSquare,
   Hash,
   GripVertical,
+  ExternalLink,
   Image
 } from 'lucide-react';
 import { theme } from '../styles/globalStyles';
@@ -26,6 +27,7 @@ import MusicBrainzDialog from '../components/MusicBrainzDialog';
 import MusicBrainzDialogV2 from '../components/MusicBrainzDialogV2';
 import MusicBrainzDialogMinimal from '../components/MusicBrainzDialogMinimal';
 import MusicBrainzFingerprint from '../components/MusicBrainzFingerprint';
+import MetadataEditor from '../components/MetadataEditor';
 
 const PageContainer = styled.div`
   height: 100%;
@@ -35,22 +37,50 @@ const PageContainer = styled.div`
 
 const PageHeader = styled.div`
   background: ${theme.colors.background.surface};
-  padding: ${theme.spacing.md} ${theme.spacing.lg};
+  padding: 20px;
   border-bottom: 1px solid ${theme.colors.border};
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 12px;
+
+  /* Row 1: Title and Badge */
+  .header-row-1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* Row 2: Artist and Buttons */
+  .header-row-2 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
 
   h1 {
-    font-size: ${theme.typography.fontSize.xl};
+    font-size: 26px;
     font-weight: 600;
     margin: 0;
+    color: #FFFFFF;
+    line-height: 1.2;
+  }
+
+  .artist-name {
+    font-size: 18px;
+    font-weight: 500;
+    color: #D0D0D0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .subtitle {
     color: ${theme.colors.text.secondary};
     font-size: ${theme.typography.fontSize.md};
     margin-left: ${theme.spacing.md};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 `;
 
@@ -71,7 +101,7 @@ const AlbumSidebar = styled.div`
   flex-direction: column;
   gap: ${theme.spacing.lg};
   height: fit-content;
-  max-height: calc(100vh - ${theme.spacing.lg} * 4);
+  max-height: calc(100vh - 200px);
   overflow-y: auto;
 `;
 
@@ -198,55 +228,72 @@ const MetaField = styled.div`
 
 const AlbumActions = styled.div`
   display: flex;
-  gap: ${theme.spacing.sm};
-  margin-bottom: ${theme.spacing.md};
+  align-items: center;
+  gap: 4px;
   flex-wrap: wrap;
+  flex-shrink: 0;
+
+  /* No longer need divider in new layout */
+  .divider {
+    display: none;
+  }
 
   button {
-    padding: ${theme.spacing.sm} ${theme.spacing.md};
+    padding: 4px 10px;
     border-radius: ${theme.borderRadius.md};
     display: flex;
     align-items: center;
     gap: ${theme.spacing.xs};
-    font-size: ${theme.typography.fontSize.sm};
+    font-size: 13px;
     transition: all ${theme.transitions.fast};
+    max-height: 32px;
 
     svg {
       width: 16px;
       height: 16px;
     }
 
+    /* Primary button - Play Album */
     &.primary {
       background: ${theme.colors.accent.primary};
       color: white;
+      border: 1px solid ${theme.colors.accent.primary};
 
       &:hover {
         background: ${theme.colors.accent.secondary};
+        border-color: ${theme.colors.accent.secondary};
       }
     }
 
+    /* Secondary outlined buttons */
     &.secondary {
-      background: ${theme.colors.background.elevated};
-      color: ${theme.colors.text.primary};
-      border: 1px solid ${theme.colors.border};
+      background: transparent;
+      color: #B0B0B0;
+      border: 1px solid #606060;
 
       &:hover {
-        background: ${theme.colors.background.secondary};
+        background: rgba(255, 255, 255, 0.05);
+        border-color: #808080;
       }
     }
 
+    /* Success outlined button - Mark as Verified */
     &.success {
-      background: ${theme.colors.status.success};
-      color: white;
+      background: transparent;
+      color: #B0B0B0;
+      border: 1px solid #606060;
 
       &:hover {
-        opacity: 0.9;
+        background: rgba(255, 255, 255, 0.05);
+        border-color: #808080;
       }
     }
 
+    /* Cancel button */
     &.cancel {
       background: ${theme.colors.status.error};
       color: white;
+      border: 1px solid ${theme.colors.status.error};
 
       &:hover {
         opacity: 0.9;
@@ -255,26 +302,97 @@ const AlbumActions = styled.div`
   }
 `;
 
+const ReleaseStatusIndicator = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+
+  &.official {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+  }
+
+  &.bootleg {
+    background: rgba(255, 193, 7, 0.15);
+    color: #FFC107;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+  }
+
+  &.promotion {
+    background: rgba(33, 150, 243, 0.15);
+    color: #2196F3;
+    border: 1px solid rgba(33, 150, 243, 0.3);
+  }
+
+  &.pseudo {
+    background: rgba(158, 158, 158, 0.15);
+    color: #9E9E9E;
+    border: 1px solid rgba(158, 158, 158, 0.3);
+  }
+`;
+
 const AlbumType = styled.div`
   display: inline-flex;
   padding: ${theme.spacing.xs} ${theme.spacing.sm};
-  background: ${theme.colors.accent.primary}20;
-  color: ${theme.colors.accent.primary};
   border-radius: ${theme.borderRadius.sm};
-  font-size: ${theme.typography.fontSize.xs};
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
   align-items: center;
   gap: ${theme.spacing.xs};
 
-  &.live {
-    background: ${theme.colors.status.success}20;
-    color: ${theme.colors.status.success};
+  /* Official Release - blue/teal */
+  &.official {
+    background: ${theme.colors.accent.primary}20;
+    color: ${theme.colors.accent.primary};
   }
 
-  &.compilation {
-    background: ${theme.colors.status.warning}20;
-    color: ${theme.colors.status.warning};
+  /* Soundboard - green */
+  &.soundboard {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4CAF50;
+  }
+
+  /* Audience - orange */
+  &.audience {
+    background: rgba(255, 152, 0, 0.2);
+    color: #FF9800;
+  }
+
+  /* Matrix - purple */
+  &.matrix {
+    background: rgba(156, 39, 176, 0.2);
+    color: #9C27B0;
+  }
+
+  /* FM Broadcast / Pre-FM - blue */
+  &.broadcast {
+    background: rgba(33, 150, 243, 0.2);
+    color: #2196F3;
+  }
+
+  /* Studio - gray */
+  &.studio {
+    background: rgba(158, 158, 158, 0.2);
+    color: #9E9E9E;
+  }
+
+  &.unknown {
+    background: rgba(128, 128, 128, 0.2);
+    color: #808080;
+  }
+
+  /* Default - gray */
+  &.default {
+    background: rgba(128, 128, 128, 0.2);
+    color: #808080;
   }
 `;
 
@@ -308,6 +426,9 @@ const TracksHeader = styled.div`
 const TracksTable = styled.div`
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
+  padding-bottom: ${theme.spacing.lg};
+  max-height: calc(100vh - 250px);
 `;
 
 const Track = styled.div`
@@ -373,7 +494,7 @@ const Track = styled.div`
 
   .track-number {
     font-weight: 600;
-    color: ${theme.colors.text.secondary};
+    color: #909090;  /* Track numbers improved contrast */
     font-family: 'Monaco', 'Consolas', monospace;
     font-size: ${theme.typography.fontSize.sm};
     text-align: center;
@@ -488,7 +609,7 @@ const TracksTableHeader = styled.div`
   border-bottom: 2px solid ${theme.colors.border};
   font-size: ${theme.typography.fontSize.xs};
   font-weight: 600;
-  color: ${theme.colors.text.secondary};
+  color: #B0B0B0;  /* Table headers improved contrast */
   position: sticky;
   top: 0;
   z-index: 1;
@@ -502,24 +623,27 @@ const VerificationBadge = styled.div`
   display: inline-flex;
   align-items: center;
   gap: ${theme.spacing.xs};
-  padding: ${theme.spacing.xs} ${theme.spacing.sm};
-  border-radius: ${theme.borderRadius.full};
+  padding: 4px 12px;
+  border-radius: 4px;
   font-size: ${theme.typography.fontSize.sm};
   font-weight: 600;
 
   &.verified {
-    background: ${theme.colors.status.success}20;
+    background: rgba(76, 175, 80, 0.15);
     color: ${theme.colors.status.success};
+    border: 1px solid rgba(76, 175, 80, 0.3);
   }
 
   &.needs-review {
-    background: ${theme.colors.status.warning}20;
+    background: rgba(243, 156, 18, 0.15);
     color: ${theme.colors.status.warning};
+    border: 1px solid rgba(243, 156, 18, 0.3);
   }
 
   &.unverified {
-    background: ${theme.colors.text.disabled}20;
+    background: rgba(112, 112, 112, 0.15);
     color: ${theme.colors.text.secondary};
+    border: 1px solid rgba(112, 112, 112, 0.3);
   }
 
   svg {
@@ -596,11 +720,13 @@ function AlbumView() {
   const [album, setAlbum] = React.useState(null);
   const [tracks, setTracks] = React.useState([]);
   const [albumType, setAlbumType] = React.useState('album');
+  const [performanceDateRange, setPerformanceDateRange] = React.useState(null);
   const [isDragging, setIsDragging] = React.useState(false);
   const [draggedTrack, setDraggedTrack] = React.useState(null);
   const [verificationStatus, setVerificationStatus] = React.useState(null);
   const [showVerificationModal, setShowVerificationModal] = React.useState(false);
   const [verificationNotes, setVerificationNotes] = React.useState('');
+  const [showMetadataEditor, setShowMetadataEditor] = React.useState(false);
 
   React.useEffect(() => {
     fetchShows();
@@ -612,11 +738,34 @@ function AlbumView() {
     try {
       // Load show/album data
       const showData = await window.api.getShow(parseInt(id));
+      console.log('CRITICAL: Loaded show data from database:', {
+        id: showData.id,
+        release_status: showData.release_status,
+        source_type: showData.source_type,
+        notes: showData.notes
+      });
 
       // Fix incorrectly parsed venue name
       if (showData.venue_name === '25,' || showData.venue_name === '25') {
         console.log('Fixing incorrectly parsed venue name:', showData.venue_name);
         showData.venue_name = 'Unknown Venue'; // Will be fixed by MusicBrainz lookup
+      }
+
+      // Use recordings data as fallback only if not already set
+      if (showData.recordings && showData.recordings.length > 0) {
+        const firstRecording = showData.recordings[0];
+        // Only set source_type if not already present
+        if (!showData.source_type) {
+          console.log('Setting source_type from recording:', firstRecording.source_type);
+          showData.source_type = firstRecording.source_type;
+        }
+        // Only set release_status if not already present
+        if (!showData.release_status) {
+          console.log('WARNING: release_status was null, setting from recording:', firstRecording.release_status);
+          showData.release_status = firstRecording.release_status;
+        } else {
+          console.log('release_status already set to:', showData.release_status, '- NOT overwriting with recording value:', firstRecording.release_status);
+        }
       }
 
       setAlbum(showData);
@@ -635,6 +784,7 @@ function AlbumView() {
   const loadVerificationStatus = async () => {
     try {
       const status = await window.api.getShowVerificationStatus(parseInt(id));
+      console.log('Loaded verification status:', JSON.stringify(status, null, 2));
       setVerificationStatus(status);
       if (status?.review_notes) {
         setVerificationNotes(status.review_notes);
@@ -687,17 +837,61 @@ function AlbumView() {
     }
 
     // Check if tracks have different dates (compilation)
-    const dates = new Set(tracksData.map(t => t.performance_date || t.date).filter(Boolean));
-    if (dates.size > 1) {
+    const dates = new Set(tracksData.map(t => t.recording_date || t.performance_date || t.date).filter(Boolean));
+
+    // Check if this is a box set based on the title
+    const isBoxSet = albumData.notes?.includes("Listen to the River") ||
+                     albumData.notes?.includes("Box Set") ||
+                     albumData.notes?.includes("'71 '72 '73");
+
+    if (dates.size > 1 || isBoxSet) {
       setAlbumType('compilation');
+      // Store the performance date range for display
+      const sortedDates = Array.from(dates).sort();
+
+      // If box set but only one track loaded so far, extract year from title
+      if (isBoxSet && dates.size <= 1) {
+        // Extract years from title like "St. Louis '71 '72 '73"
+        const yearMatches = albumData.notes?.match(/[''](\d{2})/g);
+        if (yearMatches) {
+          const years = yearMatches.map(m => {
+            const year = m.replace(/['']/, '');
+            return parseInt(year) > 50 ? `19${year}` : `20${year}`;
+          });
+          setPerformanceDateRange({
+            earliest: `${Math.min(...years.map(y => parseInt(y)))}-01-01`,
+            latest: `${Math.max(...years.map(y => parseInt(y)))}-12-31`,
+            dates: years.map(y => `${y}-01-01`)
+          });
+        } else if (dates.size === 1) {
+          const performanceDate = dates.values().next().value;
+          if (performanceDate && performanceDate !== '1970-01-01' && performanceDate !== albumData.date) {
+            setPerformanceDateRange({ single: performanceDate });
+          }
+        }
+      } else if (dates.size > 1) {
+        setPerformanceDateRange({
+          earliest: sortedDates[0],
+          latest: sortedDates[sortedDates.length - 1],
+          dates: sortedDates
+        });
+      }
       return;
     }
 
     // Check for official release markers
     if (albumData.notes?.includes('Anniversary') ||
         albumData.notes?.includes('Picks') ||
-        albumData.source_type === 'OFFICIAL') {
+        albumData.release_status === 'OFFICIAL') {
       setAlbumType('official');
+
+      // For official releases with a single performance date, use that instead of release date
+      if (dates.size === 1) {
+        const performanceDate = dates.values().next().value;
+        if (performanceDate && performanceDate !== '1970-01-01' && performanceDate !== albumData.date) {
+          setPerformanceDateRange({ single: performanceDate });
+        }
+      }
       return;
     }
 
@@ -763,12 +957,16 @@ function AlbumView() {
       title = normalizeSongTitle(title);
     }
 
-    if (track.has_segue || track.segue_type === '>') {
-      title += ' >';
+    // Add full performance date if available (not for 1970 which is a fallback)
+    if (track.performance_date && track.performance_date !== '1970-01-01') {
+      title += ` [${track.performance_date}]`;
+    } else if (track.recording_date && track.recording_date !== '1970-01-01') {
+      title += ` [${track.recording_date}]`;
     }
 
-    if (track.performance_date) {
-      title += ` (${track.performance_date})`;
+    // Add segue marker if track flows into next
+    if (track.has_segue || track.segue_type === '>') {
+      title += ' >';
     }
 
     return title;
@@ -796,6 +994,10 @@ function AlbumView() {
           catalogNumber: album.catalogNumber,
           isLive: album.isLive,
           discCount: album.discCount,
+          musicbrainz_release_id: album.musicbrainz_release_id,
+          release_type: album.release_type,
+          release_status: album.release_status,  // Save to main show record
+          source_type: album.source_type,         // Save to main show record
           venue: {
             name: album.venue_name,
             city: album.city,
@@ -866,6 +1068,10 @@ function AlbumView() {
   };
 
   const handleMusicBrainzApply = async (mbData) => {
+    console.log('=== HANDLE MUSICBRAINZ APPLY ===');
+    console.log('Raw mbData received:', mbData);
+    console.log('mbData.status:', mbData.status);
+    console.log('mbData.isOfficialRelease:', mbData.isOfficialRelease);
     console.log('Applying MusicBrainz data:', mbData);
 
     // Check if this is an official release that needs merging
@@ -888,10 +1094,17 @@ function AlbumView() {
     }
 
     // Create updated album data
+    console.log('MusicBrainz data received:', {
+      isOfficialRelease: mbData.isOfficialRelease,
+      album: mbData.album,
+      artist: mbData.artist,
+      releaseType: mbData.releaseType
+    });
+
     const updatedAlbum = {
       ...album,
       band_name: mbData.artist || album.band_name,
-      notes: mbData.isOfficialRelease ? `${mbData.album} (Official Release)` : (mbData.album || album.notes),
+      notes: mbData.album || album.notes,
       date: mbData.date || album.date,
       originalReleaseDate: mbData.originalReleaseDate,
       releaseVersion: mbData.releaseVersion,
@@ -905,8 +1118,31 @@ function AlbumView() {
       releaseType: mbData.releaseType,
       artwork_url: mbData.coverArtUrl || album.artwork_url, // Apply cover art URL
       discCount: mbData.discCount,
-      artwork: mbData.coverArt?.medium || mbData.coverArt?.small || album.artwork
+      artwork: mbData.coverArt?.medium || mbData.coverArt?.small || album.artwork,
+      musicbrainz_release_id: mbData.releaseId || mbData.musicbrainz_release_id || mbData.mbid || album.musicbrainz_release_id,
+      // Intelligently determine release_status using available data
+      release_status: (() => {
+        // The MusicBrainz 'status' field is the most reliable, if it exists
+        if (mbData.status) {
+          return mbData.status;
+        }
+        // If no status, but the release type is "bootleg", we can be certain
+        if (mbData.releaseType && mbData.releaseType.toLowerCase() === 'bootleg') {
+          return 'Bootleg';
+        }
+        // Fallback using the boolean flag
+        return mbData.isOfficialRelease ? 'Official' : 'Bootleg';
+      })()
     };
+
+    console.log('MusicBrainz data received:', {
+      status: mbData.status,
+      isOfficialRelease: mbData.isOfficialRelease,
+      releaseType: mbData.releaseType,
+      determinedStatus: updatedAlbum.release_status,
+      fullMbData: mbData
+    });
+    console.log('Final release_status determined:', updatedAlbum.release_status);
 
     // Update tracks if provided with enhanced metadata
     let updatedTracks = tracks;
@@ -931,6 +1167,8 @@ function AlbumView() {
             disc_number: mbTrack.discNumber || track.disc_number,
             has_segue: mbTrack.hasSegue || track.has_segue,
             recording_date: mbTrack.recordingDate || track.recording_date,
+            mb_recording_id: mbTrack.recordingId || track.mb_recording_id,
+            mb_release_id: mbTrack.releaseId || track.mb_release_id,
             normalized: true // Mark as normalized
           };
         }
@@ -959,6 +1197,8 @@ function AlbumView() {
           catalogNumber: updatedAlbum.catalogNumber,
           isLive: updatedAlbum.isLive,
           discCount: updatedAlbum.discCount,
+          musicbrainz_release_id: updatedAlbum.musicbrainz_release_id,
+          release_status: updatedAlbum.release_status,  // Save to main show record
           venue: {
             name: updatedAlbum.venue_name,
             city: updatedAlbum.city,
@@ -974,14 +1214,19 @@ function AlbumView() {
           song_name: track.song_name || track.song_title,
           performance_date: track.recording_date || track.performance_date || track.date,
           has_segue: track.has_segue,
-          comment: track.comment
+          comment: track.comment,
+          mb_recording_id: track.mb_recording_id,
+          mb_release_id: track.mb_release_id
         });
       }
 
       console.log('✅ MusicBrainz data saved successfully');
+      console.log('CRITICAL: About to reload album from database...');
 
       // Reload album to refresh UI with saved data
       await loadAlbum();
+
+      console.log('CRITICAL: Album reloaded from database. release_status is now:', album.release_status);
     } catch (error) {
       console.error('Error saving MusicBrainz data:', error);
       alert('Failed to save MusicBrainz data. Please try saving manually.');
@@ -998,12 +1243,72 @@ function AlbumView() {
   };
 
   const getAlbumTypeLabel = () => {
-    switch (albumType) {
-      case 'live': return 'Live Concert';
-      case 'compilation': return 'Compilation';
-      case 'official': return 'Official Release';
-      default: return 'Studio Album';
+    const source = album?.source_type?.toUpperCase();
+
+    if (source === 'SBD' || source === 'SOUNDBOARD') return 'SOUNDBOARD';
+    if (source === 'AUD') return 'AUDIENCE';
+    if (source === 'MATRIX') return 'MATRIX';
+    if (source === 'FM' || source === 'FM BROADCAST') return 'FM BROADCAST';
+    if (source === 'PRE-FM') return 'PRE-FM';
+    if (source === 'STUDIO') return 'STUDIO';
+
+    // If it's an official release and no source type specified, show OFFICIAL
+    if (album?.release_status === 'OFFICIAL' && !source) return 'OFFICIAL';
+
+    return 'UNKNOWN'; // A clear fallback
+  };
+
+  const getReleaseStatusInfo = () => {
+    const status = album?.release_status;
+
+    if (!status) {
+      return null; // Don't show a badge if the status is unknown
     }
+
+    // Use a simple, clear label. The "MusicBrainz:" prefix is no longer needed.
+    let text = status;
+    let className = status.toLowerCase(); // 'official', 'bootleg', etc.
+
+    return { text, className };
+  };
+
+  const getAlbumTypeClass = () => {
+    const label = getAlbumTypeLabel();
+    if (label === 'OFFICIAL') return 'official';
+    if (label === 'SOUNDBOARD') return 'soundboard';
+    if (label === 'AUDIENCE') return 'audience';
+    if (label === 'MATRIX') return 'matrix';
+    if (label === 'FM BROADCAST' || label === 'PRE-FM') return 'broadcast';
+    if (label === 'STUDIO') return 'studio';
+    if (label === 'UNKNOWN') return 'unknown';
+    return 'default';
+  };
+
+  const handleOpenMusicBrainz = () => {
+    console.log('Opening MusicBrainz...', album);
+    let url;
+
+    // Check if we have a stored MusicBrainz Release ID at album level
+    if (album?.musicbrainz_release_id) {
+      url = `https://musicbrainz.org/release/${album.musicbrainz_release_id}`;
+      console.log('Opening MusicBrainz release from album:', album.musicbrainz_release_id);
+    } else {
+      // Try to use the first track's release ID as fallback
+      const firstTrackWithMbId = tracks.find(t => t.mb_release_id);
+      if (firstTrackWithMbId?.mb_release_id) {
+        url = `https://musicbrainz.org/release/${firstTrackWithMbId.mb_release_id}`;
+        console.log('Opening MusicBrainz release from first track:', firstTrackWithMbId.mb_release_id);
+      } else {
+        // Fall back to search if no mbid is stored anywhere
+        const artist = encodeURIComponent(album?.band_name || 'Grateful Dead');
+        const albumTitle = encodeURIComponent(album?.notes || `${album?.date} ${album?.venue_name}` || '');
+        url = `https://musicbrainz.org/search?query=${artist}+${albumTitle}&type=release`;
+        console.log('Searching MusicBrainz for:', artist, albumTitle);
+      }
+    }
+
+    console.log('MusicBrainz URL:', url);
+    window.open(url, '_blank');
   };
 
   const handlePlayAlbum = async () => {
@@ -1045,22 +1350,59 @@ function AlbumView() {
   return (
     <PageContainer>
       <PageHeader>
-        <div>
-          <h1>
-            {album.notes || `${album.date} - ${album.venue_name}` || 'Untitled Album'}
-            <br />
-            <span className="subtitle" style={{ fontSize: '0.75em', fontWeight: 'normal' }}>
-              {album.band_name || 'Grateful Dead'}
-            </span>
-          </h1>
-        </div>
-        <AlbumActions>
+        {/* Row 1: Title and Verification Badge */}
+        <div className="header-row-1">
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <h1>
+              {editMode ? (
+                <input
+                  type="text"
+                  value={album.notes || ''}
+                  onChange={(e) => setAlbum({ ...album, notes: e.target.value })}
+                  placeholder="Album title..."
+                  style={{
+                    fontSize: 'inherit',
+                    fontWeight: 'inherit',
+                    background: 'transparent',
+                    border: '1px solid #4a4a4a',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    color: 'inherit',
+                    width: '100%'
+                  }}
+                />
+              ) : (
+                (() => {
+                  // For live concerts, show date - venue: album name
+                  if (album.date && album.venue_name) {
+                    const dateFormatted = album.date;
+                    const venue = album.venue_name;
+                    const city = album.city || '';
+                    const state = album.state || '';
+                    const location = [city, state].filter(Boolean).join(', ');
+                    const venueDisplay = location ? `${venue}, ${location}` : venue;
+                    const albumName = album.notes || '';
+
+                    if (albumName && !albumName.includes(album.date)) {
+                      // If we have an album name that doesn't already include the date
+                      return `${dateFormatted} - ${venueDisplay}: ${albumName}`;
+                    } else {
+                      // Just show date and venue
+                      return `${dateFormatted} - ${venueDisplay}`;
+                    }
+                  }
+                  // Fallback to original logic
+                  return album.notes || 'Untitled Album';
+                })()
+              )}
+            </h1>
+          </div>
           {/* Verification Status Badge */}
           {verificationStatus && (
             <VerificationBadge
               className={
                 verificationStatus.verified ? 'verified' :
-                verificationStatus.needs_review ? 'needs-review' :
+                (verificationStatus.needs_review && verificationStatus.needs_review !== 0) ? 'needs-review' :
                 'unverified'
               }
             >
@@ -1069,7 +1411,7 @@ function AlbumView() {
                   <CheckCircle />
                   Verified
                 </>
-              ) : verificationStatus.needs_review ? (
+              ) : (verificationStatus.needs_review && verificationStatus.needs_review !== 0) ? (
                 <>
                   <MessageSquare />
                   Needs Review
@@ -1082,48 +1424,71 @@ function AlbumView() {
               )}
             </VerificationBadge>
           )}
+        </div>
 
-          {editMode ? (
-            <>
-              <button className="secondary" onClick={() => setShowMusicBrainz(true)}>
-                <Search /> Lookup from MusicBrainz
-              </button>
-              <button className="success" onClick={handleSave}>
-                <Save /> Save Changes
-              </button>
-              <button className="cancel" onClick={handleCancel}>
-                <X /> Cancel
-              </button>
-            </>
-          ) : (
-            <>
-              {!verificationStatus?.verified && (
-                <button className="success" onClick={() => setShowVerificationModal(true)}>
-                  <CheckCircle /> Mark as Verified
+        {/* Row 2: Artist Name and Action Buttons */}
+        <div className="header-row-2">
+          <div className="artist-name">
+            <Music />
+            {album.band_name || 'Grateful Dead'}
+          </div>
+          <AlbumActions>
+            {editMode ? (
+              <>
+                <button className="secondary" onClick={() => setShowMusicBrainz(true)}>
+                  <Search /> MusicBrainz
                 </button>
-              )}
-              {verificationStatus?.verified && (
-                <button className="secondary" onClick={handleClearVerification}>
-                  <X /> Clear Verification
+                <button
+                  className="secondary"
+                  onClick={handleOpenMusicBrainz}
+                  title="View on MusicBrainz"
+                >
+                  <ExternalLink /> Open
                 </button>
-              )}
-              {!verificationStatus?.needs_review && (
-                <button className="secondary" onClick={handleMarkForReview}>
-                  <MessageSquare /> Mark for Review
+                <button className="success" onClick={handleSave}>
+                  <Save /> Save
                 </button>
-              )}
-              <button className="secondary" onClick={() => setEditMode(true)}>
-                <Edit /> Edit Metadata
-              </button>
-              <button className="secondary" onClick={() => setShowMusicBrainz(true)}>
-                <Search /> Lookup from MusicBrainz
-              </button>
-              <button className="primary" onClick={handlePlayAlbum}>
-                <Play /> Play Album
-              </button>
-            </>
-          )}
-        </AlbumActions>
+                <button className="cancel" onClick={handleCancel}>
+                  <X /> Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                {verificationStatus && !verificationStatus.verified && (
+                  <button className="success" onClick={() => setShowVerificationModal(true)}>
+                    <CheckCircle /> Verify
+                  </button>
+                )}
+                {verificationStatus && !!verificationStatus.verified && (
+                  <button className="secondary" onClick={handleClearVerification}>
+                    <X /> Clear
+                  </button>
+                )}
+                {verificationStatus && !verificationStatus.verified && !verificationStatus.needs_review && (
+                  <button className="secondary" onClick={handleMarkForReview}>
+                    <MessageSquare /> Review
+                  </button>
+                )}
+                <button className="secondary" onClick={() => setShowMetadataEditor(true)}>
+                  <Edit /> Edit Metadata
+                </button>
+                <button className="secondary" onClick={() => setShowMusicBrainz(true)}>
+                  <Search /> MusicBrainz
+                </button>
+                <button
+                  className="secondary"
+                  onClick={handleOpenMusicBrainz}
+                  title="View on MusicBrainz"
+                >
+                  <ExternalLink /> Open
+                </button>
+                <button className="primary" onClick={handlePlayAlbum}>
+                  <Play /> Play
+                </button>
+              </>
+            )}
+          </AlbumActions>
+        </div>
       </PageHeader>
 
       <PageContent>
@@ -1137,13 +1502,21 @@ function AlbumView() {
         </AlbumArtwork>
 
         <AlbumInfo>
-          <AlbumType className={albumType}>
+          {/* Display the Release Status */}
+          {getReleaseStatusInfo() && (
+            <ReleaseStatusIndicator className={getReleaseStatusInfo().className}>
+              {getReleaseStatusInfo().text}
+            </ReleaseStatusIndicator>
+          )}
+
+          {/* Source Type Badge (Soundboard, Audience, etc.) */}
+          <AlbumType className={getAlbumTypeClass()}>
             {getAlbumTypeLabel()}
           </AlbumType>
 
           <AlbumMeta>
             <MetaField>
-              <label>Release Date</label>
+              <label>{performanceDateRange ? 'Performance Date' : 'Release Date'}</label>
               <div className="value">
                 <Calendar />
                 {editMode ? (
@@ -1154,10 +1527,38 @@ function AlbumView() {
                     placeholder="yyyy-mm-dd"
                   />
                 ) : (
-                  album.date || 'Unknown'
+                  (() => {
+                    // If we have performance dates, display those instead of release date
+                    if (performanceDateRange) {
+                      if (performanceDateRange.single) {
+                        return performanceDateRange.single;
+                      } else if (performanceDateRange.earliest && performanceDateRange.latest) {
+                        // Format as year range if spanning multiple years
+                        const startYear = performanceDateRange.earliest.substring(0, 4);
+                        const endYear = performanceDateRange.latest.substring(0, 4);
+                        if (startYear === endYear) {
+                          return startYear;
+                        } else {
+                          return `${startYear}-${endYear}`;
+                        }
+                      }
+                    }
+                    return album.date || 'Unknown';
+                  })()
                 )}
               </div>
             </MetaField>
+
+            {/* Show box set release date if we're showing performance dates instead */}
+            {performanceDateRange && album.date && (
+              <MetaField>
+                <label>Box Set Release</label>
+                <div className="value">
+                  <Calendar />
+                  {album.date}
+                </div>
+              </MetaField>
+            )}
 
             {album.originalReleaseDate && album.originalReleaseDate !== album.date && (
               <MetaField>
@@ -1230,10 +1631,31 @@ function AlbumView() {
                       <option value="SBD">Soundboard</option>
                       <option value="AUD">Audience</option>
                       <option value="MATRIX">Matrix</option>
-                      <option value="OFFICIAL">Official</option>
+                      <option value="FM">FM Broadcast</option>
                     </select>
                   ) : (
                     album.source_type
+                  )}
+                </div>
+              </MetaField>
+            )}
+
+            {(album.release_status || editMode) && (
+              <MetaField>
+                <label>Release Status</label>
+                <div className="value">
+                  {editMode ? (
+                    <select
+                      value={album.release_status || 'BOOTLEG'}
+                      onChange={(e) => setAlbum({ ...album, release_status: e.target.value })}
+                    >
+                      <option value="OFFICIAL">Official</option>
+                      <option value="BOOTLEG">Bootleg</option>
+                      <option value="PROMOTION">Promotion</option>
+                      <option value="PSEUDO">Pseudo-Release</option>
+                    </select>
+                  ) : (
+                    album.release_status || 'BOOTLEG'
                   )}
                 </div>
               </MetaField>
@@ -1380,6 +1802,7 @@ function AlbumView() {
 
       {showMusicBrainz && (
         <MusicBrainzFingerprint
+          skipAutoProcess={verificationStatus?.verified || false}
           initialData={{
             artist: album.band_name || 'Grateful Dead',
             album: album.notes || '',
@@ -1395,7 +1818,6 @@ function AlbumView() {
             }))
           }}
           isVerified={verificationStatus?.verified || false}
-          skipAutoProcess={false} // User explicitly opened dialog, so don't skip
           onApply={handleMusicBrainzApply}
           onClose={() => setShowMusicBrainz(false)}
         />
@@ -1420,11 +1842,38 @@ function AlbumView() {
                 Cancel
               </button>
               <button className="success" onClick={handleMarkAsVerified}>
-                <CheckCircle /> Mark as Verified
+                <CheckCircle /> Verify
               </button>
             </div>
           </VerificationModal>
         </>
+      )}
+
+      {showMetadataEditor && album && (
+        <MetadataEditor
+          albumData={album}
+          tracks={tracks}
+          onSave={async (updates) => {
+            try {
+              // Save album metadata
+              if (updates.album) {
+                await window.api.bulkUpdateShows([updates.album]);
+              }
+
+              // Save track metadata
+              if (updates.tracks && updates.tracks.length > 0) {
+                await window.api.bulkUpdateTracks(updates.tracks);
+              }
+
+              // Reload the album data
+              await loadAlbum();
+              setShowMetadataEditor(false);
+            } catch (error) {
+              console.error('Error saving metadata:', error);
+            }
+          }}
+          onClose={() => setShowMetadataEditor(false)}
+        />
       )}
     </PageContainer>
   );

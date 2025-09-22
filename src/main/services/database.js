@@ -65,7 +65,8 @@ class DatabaseService {
       `CREATE TABLE IF NOT EXISTS recordings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         show_id INTEGER NOT NULL,
-        source_type TEXT CHECK(source_type IN ('SBD', 'AUD', 'MATRIX', 'OFFICIAL')),
+        source_type TEXT CHECK(source_type IN ('SBD', 'AUD', 'MATRIX', 'FM')),
+        release_status TEXT CHECK(release_status IN ('OFFICIAL', 'BOOTLEG', 'PROMOTION', 'PSEUDO')) DEFAULT 'BOOTLEG',
         taper TEXT,
         lineage TEXT,
         library_path TEXT NOT NULL,
@@ -194,6 +195,29 @@ class DatabaseService {
       return result.some(col => col.name === column);
     };
 
+    // Add MusicBrainz columns to shows table
+    if (!(await checkColumn('shows', 'musicbrainz_release_id'))) {
+      try {
+        await this.runAsync('ALTER TABLE shows ADD COLUMN musicbrainz_release_id TEXT');
+        console.log('Added musicbrainz_release_id column to shows table');
+      } catch (error) {
+        if (!error.message.includes('duplicate column')) {
+          console.error('Error adding musicbrainz_release_id column:', error.message);
+        }
+      }
+    }
+
+    if (!(await checkColumn('shows', 'release_type'))) {
+      try {
+        await this.runAsync('ALTER TABLE shows ADD COLUMN release_type TEXT');
+        console.log('Added release_type column to shows table');
+      } catch (error) {
+        if (!error.message.includes('duplicate column')) {
+          console.error('Error adding release_type column:', error.message);
+        }
+      }
+    }
+
     // Add is_official column to recordings if it doesn't exist
     if (!(await checkColumn('recordings', 'is_official'))) {
       try {
@@ -290,6 +314,46 @@ class DatabaseService {
       }
     }
 
+    // Add MusicBrainz columns to tracks table
+    if (!(await checkColumn('tracks', 'mb_recording_id'))) {
+      try {
+        await this.runAsync('ALTER TABLE tracks ADD COLUMN mb_recording_id TEXT');
+        console.log('Added mb_recording_id column to tracks table');
+      } catch (err) {
+        console.log('Column mb_recording_id may already exist:', err.message);
+      }
+    }
+
+    if (!(await checkColumn('tracks', 'mb_release_id'))) {
+      try {
+        await this.runAsync('ALTER TABLE tracks ADD COLUMN mb_release_id TEXT');
+        console.log('Added mb_release_id column to tracks table');
+      } catch (err) {
+        console.log('Column mb_release_id may already exist:', err.message);
+      }
+    }
+
+    // Add release_status column to recordings table
+    if (!(await checkColumn('recordings', 'release_status'))) {
+      try {
+        await this.runAsync(`ALTER TABLE recordings ADD COLUMN release_status TEXT
+          CHECK(release_status IN ('OFFICIAL', 'BOOTLEG', 'PROMOTION', 'PSEUDO'))
+          DEFAULT 'BOOTLEG'`);
+        console.log('Added release_status column to recordings table');
+
+        // Migrate existing OFFICIAL source_type to release_status
+        await this.runAsync(`
+          UPDATE recordings
+          SET release_status = 'OFFICIAL',
+              source_type = 'SBD'
+          WHERE source_type = 'OFFICIAL'
+        `);
+        console.log('Migrated OFFICIAL source_type to release_status');
+      } catch (err) {
+        console.log('Column release_status may already exist:', err.message);
+      }
+    }
+
     // Add verification status columns to shows table
     if (!(await checkColumn('shows', 'verified'))) {
       try {
@@ -324,6 +388,30 @@ class DatabaseService {
         console.log('Added review_notes column to shows table');
       } catch (err) {
         console.log('Column review_notes may already exist:', err.message);
+      }
+    }
+
+    // Add release_status column to shows table
+    if (!(await checkColumn('shows', 'release_status'))) {
+      try {
+        await this.runAsync(`ALTER TABLE shows ADD COLUMN release_status TEXT
+          CHECK(release_status IN ('OFFICIAL', 'BOOTLEG', 'PROMOTION', 'PSEUDO'))
+          DEFAULT 'BOOTLEG'`);
+        console.log('Added release_status column to shows table');
+      } catch (err) {
+        console.log('Column release_status may already exist:', err.message);
+      }
+    }
+
+    // Add source_type column to shows table
+    if (!(await checkColumn('shows', 'source_type'))) {
+      try {
+        await this.runAsync(`ALTER TABLE shows ADD COLUMN source_type TEXT
+          CHECK(source_type IN ('SBD', 'AUD', 'MATRIX', 'FM', 'PRE-FM', 'POST-FM', 'STREAM', 'WEBCAST'))
+          DEFAULT 'SBD'`);
+        console.log('Added source_type column to shows table');
+      } catch (err) {
+        console.log('Column source_type may already exist:', err.message);
       }
     }
 
@@ -387,7 +475,9 @@ class DatabaseService {
   async getShow(showId) {
     const show = await this.getAsync(`
       SELECT s.*, b.name as band_name, v.name as venue_name,
-             v.city, v.state
+             v.city, v.state,
+             s.musicbrainz_release_id, s.release_type,
+             s.release_status, s.source_type, s.artwork
       FROM shows s
       JOIN bands b ON s.band_id = b.id
       LEFT JOIN venues v ON s.venue_id = v.id
@@ -395,6 +485,7 @@ class DatabaseService {
     `, [showId]);
 
     if (show) {
+      console.log(`Retrieved show ${showId} with release_status: "${show.release_status}"`);
       show.recordings = await this.allAsync(`
         SELECT * FROM recordings WHERE show_id = ?
       `, [showId]);
@@ -710,10 +801,24 @@ class DatabaseService {
     return result.lastID;
   }
 
-  async createTrack(recordingId, trackNumber, songId, duration, filePath) {
+  async createTrack(recordingId, trackNumber, songId, duration, filePath, songName = null) {
+    // Get the song name if we have a songId but no songName provided
+    if (songId && !songName) {
+      const song = await this.getAsync('SELECT title FROM songs WHERE id = ?', [songId]);
+      songName = song ? song.title : null;
+    }
+
     const result = await this.runAsync(
-      `INSERT INTO tracks (recording_id, track_number, song_id, duration, file_path) VALUES (?, ?, ?, ?, ?)`,
-      [recordingId, trackNumber, songId, duration, filePath]
+      `INSERT INTO tracks (recording_id, track_number, song_id, duration, file_path, song_name) VALUES (?, ?, ?, ?, ?, ?)`,
+      [recordingId, trackNumber, songId, duration, filePath, songName]
+    );
+    return result.lastID;
+  }
+
+  async createSet(recordingId, setNumber, startTrack, endTrack) {
+    const result = await this.runAsync(
+      `INSERT INTO sets (recording_id, set_number, start_track, end_track) VALUES (?, ?, ?, ?)`,
+      [recordingId, setNumber, startTrack, endTrack]
     );
     return result.lastID;
   }
@@ -784,6 +889,7 @@ class DatabaseService {
         r.lineage,
         r.quality_rating,
         s.date,
+        COALESCE(t.performance_date, s.date) as recording_date,
         v.name as venue,
         v.city,
         v.state,
@@ -838,7 +944,9 @@ class DatabaseService {
       'title': 'title',
       'duration': 'duration',
       'segue_type': 'segue_type',
-      'file_path': 'file_path'
+      'file_path': 'file_path',
+      'mb_recording_id': 'mb_recording_id',
+      'mb_release_id': 'mb_release_id'
     };
 
     for (const [key, dbField] of Object.entries(fieldMap)) {
@@ -951,6 +1059,48 @@ class DatabaseService {
     await this.runAsync('UPDATE recordings SET quality_rating = ? WHERE id = ?', [rating, recordingId]);
   }
 
+  async updateRecording(recordingId, updates) {
+    const fields = [];
+    const values = [];
+
+    if (updates.source_type !== undefined) {
+      fields.push('source_type = ?');
+      values.push(updates.source_type);
+    }
+
+    if (updates.release_status !== undefined) {
+      fields.push('release_status = ?');
+      // Convert to uppercase to match CHECK constraint
+      const upperStatus = updates.release_status ? updates.release_status.toUpperCase() : null;
+      values.push(upperStatus);
+    }
+
+    if (updates.quality_rating !== undefined) {
+      fields.push('quality_rating = ?');
+      values.push(updates.quality_rating);
+    }
+
+    if (fields.length === 0) return;
+
+    values.push(recordingId);
+    await this.runAsync(
+      `UPDATE recordings SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+  }
+
+  async updateRecordingByShowId(showId, updates) {
+    // Update the first recording for a show (most shows have only one recording)
+    const recording = await this.getAsync(
+      'SELECT id FROM recordings WHERE show_id = ? LIMIT 1',
+      [showId]
+    );
+
+    if (recording) {
+      await this.updateRecording(recording.id, updates);
+    }
+  }
+
   getBand(name) {
     // Synchronous for now - should be converted to async
     let band = null;
@@ -984,6 +1134,25 @@ class DatabaseService {
         if (changes.artwork !== undefined) {
           updateFields.push('artwork = ?');
           updateValues.push(changes.artwork);
+        }
+        if (changes.musicbrainz_release_id !== undefined) {
+          updateFields.push('musicbrainz_release_id = ?');
+          updateValues.push(changes.musicbrainz_release_id);
+        }
+        if (changes.release_type !== undefined) {
+          updateFields.push('release_type = ?');
+          updateValues.push(changes.release_type);
+        }
+        if (changes.release_status !== undefined) {
+          updateFields.push('release_status = ?');
+          // Convert to uppercase to match CHECK constraint
+          const upperStatus = changes.release_status ? changes.release_status.toUpperCase() : null;
+          updateValues.push(upperStatus);
+          console.log(`Setting release_status to: "${upperStatus}" (original: "${changes.release_status}") for show ${showId}`);
+        }
+        if (changes.source_type !== undefined) {
+          updateFields.push('source_type = ?');
+          updateValues.push(changes.source_type);
         }
 
         // Execute update if there are fields to update
@@ -1083,6 +1252,7 @@ class DatabaseService {
 
     const tables = [
       'tracks',
+      'sets',      // Add sets table to clear list
       'recordings',
       'shows',
       'songs',
@@ -1091,17 +1261,34 @@ class DatabaseService {
     ];
 
     try {
+      // Start a transaction for atomic operation
+      await this.runAsync('BEGIN TRANSACTION');
+
       for (const table of tables) {
+        const beforeCount = await this.getAsync(`SELECT COUNT(*) as count FROM ${table}`);
+        console.log(`Table ${table} has ${beforeCount.count} records before clear`);
+
         await this.runAsync(`DELETE FROM ${table}`);
         // Reset auto-increment counters
         await this.runAsync(`DELETE FROM sqlite_sequence WHERE name = ?`, [table]);
-        console.log(`Cleared table: ${table}`);
+
+        const afterCount = await this.getAsync(`SELECT COUNT(*) as count FROM ${table}`);
+        console.log(`Table ${table} has ${afterCount.count} records after clear`);
       }
+
+      // Commit the transaction
+      await this.runAsync('COMMIT');
+
+      // Verify the clear worked
+      const showCount = await this.getAsync('SELECT COUNT(*) as count FROM shows');
+      const trackCount = await this.getAsync('SELECT COUNT(*) as count FROM tracks');
+      console.log(`VERIFICATION: Shows: ${showCount.count}, Tracks: ${trackCount.count}`);
 
       console.log('All database tables cleared successfully');
       return { success: true, message: 'Database cleared successfully' };
     } catch (error) {
       console.error('Error clearing database:', error);
+      await this.runAsync('ROLLBACK');
       return { success: false, error: error.message };
     }
   }
