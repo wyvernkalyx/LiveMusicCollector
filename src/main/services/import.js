@@ -734,7 +734,13 @@ class ImportService {
 
     // Fall back to parsing from filename if no date found
     if (!date) {
-      date = this.parseDate(metadata.filename) || this.parseDate(metadata.path) || 'Unknown-Date';
+      date = this.parseDate(metadata.filename) || this.parseDate(metadata.path);
+    }
+
+    // If still no valid date, don't copy the file - require date to be set
+    if (!date || date === 'Unknown-Date') {
+      console.error('Cannot copy file to library without a valid date. Please provide a date in metadata review.');
+      throw new Error('Date is required for importing files. Please set a valid date in the metadata review.');
     }
 
     // Check if this is an official release or box set

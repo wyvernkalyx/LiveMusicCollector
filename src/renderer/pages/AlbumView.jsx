@@ -30,9 +30,10 @@ import MusicBrainzFingerprint from '../components/MusicBrainzFingerprint';
 import MetadataEditor from '../components/MetadataEditor';
 
 const PageContainer = styled.div`
-  height: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 `;
 
 const PageHeader = styled.div`
@@ -90,7 +91,8 @@ const PageContent = styled.div`
   grid-template-columns: 260px 1fr;
   padding: ${theme.spacing.lg};
   gap: ${theme.spacing.lg};
-  overflow: hidden;
+  overflow: auto;
+  min-height: 0;
 `;
 
 const AlbumSidebar = styled.div`
@@ -101,8 +103,8 @@ const AlbumSidebar = styled.div`
   flex-direction: column;
   gap: ${theme.spacing.lg};
   height: fit-content;
-  max-height: calc(100vh - 200px);
-  overflow-y: auto;
+  position: sticky;
+  top: 0;
 `;
 
 const AlbumArtwork = styled.div`
@@ -402,7 +404,7 @@ const TracksSection = styled.div`
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  height: calc(100vh - ${theme.spacing.lg} * 4);
+  height: 100%;
 `;
 
 const TracksHeader = styled.div`
@@ -427,8 +429,7 @@ const TracksTable = styled.div`
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding-bottom: ${theme.spacing.lg};
-  max-height: calc(100vh - 250px);
+  padding-bottom: ${theme.spacing.xl};
 `;
 
 const Track = styled.div`

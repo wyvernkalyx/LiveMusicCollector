@@ -17,6 +17,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build:main` - Build main process with build.js script
 - `npm run build:renderer` - Build renderer with Vite
 
+## Major Design Decisions & Requirements
+
+### Core Principles
+1. **Non-destructive**: Original audio files are NEVER modified or renamed
+2. **Metadata-focused**: All organization is done through database metadata, not file manipulation
+3. **Live music optimized**: Designed specifically for managing concert recordings, not studio albums
+4. **Automatic identification**: Uses audio fingerprinting to identify tracks and shows
+5. **Flexible organization**: Supports both official releases and bootleg recordings
+
+### Import Requirements
+- **Date is mandatory**: Cannot import without a valid performance date (YYYY-MM-DD format)
+- **Venue is mandatory**: Cannot import without a valid venue name
+- **Folder = Album**: Each folder is treated as a separate album/show during import
+- **Metadata validation**: All metadata must be validated before files are copied to library
+
+### Folder Structure Rules
+- **Official Releases**: `/Artist/Album Name/[original files]`
+- **Live Bootlegs**: `/Artist/Year/Date - Venue - State (Source)/[original files]`
+- **Source types**: SBD (Soundboard), AUD (Audience), Matrix, FM, Stream
+- **No file renaming**: Original filenames are always preserved
+
+### MusicBrainz Integration
+- **Performance date priority**: Always extracts actual concert date, never release date
+- **Auto-fingerprinting**: Triggered automatically when critical metadata is missing
+- **Bulk processing**: Fingerprints multiple tracks for better album identification
+- **Smart matching**: Uses confidence scores to determine best matches
+
+### User Experience Requirements
+- **Visual feedback**: All operations must show clear status and progress
+- **Validation errors**: Clear messages explaining why operations cannot proceed
+- **Bulk operations**: Support for importing and processing multiple albums at once
+- **Edit flexibility**: All metadata fields must be editable with undo capability
+
 ## Architecture
 
 This is an Electron + React application for managing live music collections. The architecture follows Electron's process separation model:
@@ -83,7 +116,43 @@ All database operations go through IPC handlers:
 - `@emotion/styled` - CSS-in-JS styling
 - `zustand` - State management
 
-## Recent Updates
+## Recent Updates (2025-09-23)
+
+### Import System Major Overhaul
+- **Auto-fingerprinting on import**: Automatically fingerprints tracks when metadata is missing or invalid
+- **Proper metadata persistence**: Fixed issue where user-edited metadata was being overwritten during import
+- **Date/venue validation**: Made date and venue required fields before import can proceed
+- **Batch folder import**: Each folder treated as separate album, maintaining organization (Note: Currently only first folder's metadata can be reviewed/edited)
+- **Multi-date album detection**: Warns when tracks have different performance dates
+
+### ImportMetadataReviewV2 Enhanced UI
+- **Dynamic status indicators**: Real-time updates showing match/differ/missing states
+- **Source Information section**: Added Release Type, Source Type, and Taper/Lineage fields
+- **Track-level editing**: Edit individual track metadata with "Apply to All" functionality
+- **Improved folder preview**: Shows full file paths and proper organization structure
+- **Official vs Bootleg handling**: Different folder structures based on release type
+  - Official: `/Artist/Album Name/`
+  - Bootleg: `/Artist/Year/Date - Venue - State (Source)/`
+
+### MusicBrainz Integration Improvements
+- **Performance date extraction**: Successfully extracts actual concert dates (not release dates)
+- **Venue/location data**: Pulls venue, city, state from MusicBrainz relationships
+- **Release type detection**: Automatically detects official vs bootleg releases
+- **Album metadata re-evaluation**: Properly updates UI after fingerprinting completes
+- **Bulk fingerprinting**: Fingerprints up to 5 tracks for better album identification
+
+### File Organization Rules
+- **Original filenames preserved**: Files are never renamed, only metadata is updated
+- **Required metadata**: Date and venue are mandatory for proper organization
+- **Source type tracking**: SBD/AUD/Matrix/FM included in folder names
+- **Year-based organization**: Live shows organized by year subdirectories
+
+### UI/UX Fixes
+- **Album view scrolling**: Fixed bottom content being cut off
+- **Volume slider**: Fixed drag functionality
+- **Auto-refresh**: Album view refreshes after saving metadata
+- **Grid column widths**: Improved readability with proper column sizing
+- **Sticky sidebar**: Album sidebar stays in place while scrolling tracks
 
 ### Album Verification System
 - Added verification status tracking to prevent re-processing of verified albums
@@ -135,11 +204,30 @@ All database operations go through IPC handlers:
 
 ## Development Notes
 
-- The application is in active development with core functionality implemented
-- Database uses SQLite with FTS5 for efficient full-text search
-- The app follows non-destructive principles - original files are never modified
-- Library organization follows pattern: `/Band/Year/Date - Venue - (Source)/tracks`
-- Audio streaming server automatically starts on app launch for FLAC support
+### Current State (2025-09-23)
+- **Core functionality**: Import, fingerprinting, playback, and organization fully working
+- **MusicBrainz integration**: Successfully identifies Grateful Dead and other jam band recordings
+- **Batch import**: Can handle hundreds of folders/shows in single import operation
+- **Auto-organization**: Files automatically organized based on metadata
+
+### Technical Decisions
+- **SQLite with FTS5**: Chosen for fast full-text search across large music libraries
+- **Non-destructive approach**: Files are copied, never moved or renamed
+- **HTTP streaming**: Required for FLAC playback in Chromium-based renderer
+- **Electron + React**: Provides native file access with modern UI capabilities
+
+### Testing Approach
+- Test with actual Grateful Dead recordings from Archive.org
+- Verify fingerprinting with both official releases and bootlegs
+- Ensure date extraction works with various naming conventions
+- Test batch imports with 100+ folders
+
+### Future Enhancements (Planned)
+- Archive.org direct integration for downloading shows
+- Setlist integration and management
+- Advanced search with date ranges and venue filters
+- Duplicate detection across different sources
+- FLAC to MP3 conversion for mobile sync
 
 ## Development Environment
 - OS: Windows 10.0.26100

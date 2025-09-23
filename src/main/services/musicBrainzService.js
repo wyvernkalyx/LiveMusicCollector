@@ -248,7 +248,7 @@ class MusicBrainzService {
       title: recording.title,
       duration: recording.length ? Math.floor(recording.length / 1000) : null,
       artist: recording['artist-credit']?.[0]?.artist?.name,
-      releases: officialReleases.map(r => ({
+      releases: releases.map(r => ({  // Return ALL releases, not just official ones
         id: r.id,
         title: r.title,
         date: r.date,
@@ -534,6 +534,95 @@ class MusicBrainzService {
   }
 
   /**
+   * Extract live performance information from title
+   */
+  extractLiveInfoFromTitle(title) {
+    if (!title) return null;
+
+    let date = null;
+    let venue = null;
+    let city = null;
+    let state = null;
+
+    // Pattern 1: "Live at [Venue], [City], [State/Country] YYYY-MM-DD"
+    let match = title.match(/Live at ([^,]+),?\s*([^,]+)?,?\s*([A-Z]{2}|[^,]+)?\s+(\d{4}-\d{2}-\d{2})/i);
+    if (match) {
+      venue = match[1]?.trim();
+      city = match[2]?.trim();
+      state = match[3]?.trim();
+      date = match[4];
+      return { date, venue, city, state };
+    }
+
+    // Pattern 2: "Live at [Venue] YYYY-MM-DD"
+    match = title.match(/Live at ([^,]+)\s+(\d{4}-\d{2}-\d{2})/i);
+    if (match) {
+      venue = match[1]?.trim();
+      date = match[2];
+      return { date, venue, city, state };
+    }
+
+    // Pattern 3: "[City] 'YY" or "[City] YYYY" (e.g., "St. Louis '71" or "Boston 1977")
+    match = title.match(/([A-Za-z\s.]+)\s+'?(\d{2,4})\b/);
+    if (match) {
+      city = match[1]?.trim();
+      let year = match[2];
+      // Convert 2-digit year to 4-digit
+      if (year.length === 2) {
+        year = parseInt(year) > 50 ? `19${year}` : `20${year}`;
+      }
+      // Just return the year as a partial date
+      date = `${year}`;
+      return { date, venue, city, state };
+    }
+
+    // Pattern 4: Date in parentheses "(YYYY-MM-DD)" or "(MM/DD/YYYY)"
+    match = title.match(/\((\d{4}-\d{2}-\d{2})\)/);
+    if (match) {
+      date = match[1];
+      return { date, venue, city, state };
+    }
+
+    match = title.match(/\((\d{1,2})\/(\d{1,2})\/(\d{4})\)/);
+    if (match) {
+      const month = match[1].padStart(2, '0');
+      const day = match[2].padStart(2, '0');
+      date = `${match[3]}-${month}-${day}`;
+      return { date, venue, city, state };
+    }
+
+    // Pattern 5: "Live from [Venue]" or "Recorded at [Venue]"
+    match = title.match(/(Live from|Recorded at|At)\s+([^,\(]+)/i);
+    if (match) {
+      venue = match[2]?.trim();
+      return { date, venue, city, state };
+    }
+
+    // Pattern 6: Just a date somewhere in the title
+    match = title.match(/(\d{4}-\d{2}-\d{2})/);
+    if (match) {
+      date = match[1];
+      return { date, venue, city, state };
+    }
+
+    // Pattern 7: Month Day, Year format (e.g., "February 27, 1969")
+    match = title.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})/i);
+    if (match) {
+      const months = {
+        'january': '01', 'february': '02', 'march': '03', 'april': '04',
+        'may': '05', 'june': '06', 'july': '07', 'august': '08',
+        'september': '09', 'october': '10', 'november': '11', 'december': '12'
+      };
+      const month = months[match[1].toLowerCase()];
+      const day = match[2].padStart(2, '0');
+      date = `${match[3]}-${month}-${day}`;
+      return { date, venue, city, state };
+    }
+
+    return null;
+  }
+
+  /**
    * Format track title with performance date for live recordings
    */
   formatTrackTitleWithDate(title, performanceDate, isLive = false) {
@@ -672,7 +761,10 @@ class MusicBrainzService {
           recording = await this.mbApi.lookup('recording', bestAcoustIDMatch.recordingId, [
             'artists',
             'releases',
-            'release-groups'
+            'release-groups',
+            'place-rels',
+            'work-rels',
+            'artist-rels'
           ]);
 
           // MusicBrainz recording objects have title at the top level
@@ -734,6 +826,83 @@ class MusicBrainzService {
         const title = recordingTitle || metadata?.title || 'Unknown Track';
         const artistName = recordingArtist || metadata?.artist || 'Unknown Artist';
 
+        // Extract performance date from relationships first (most accurate)
+        let performanceDate = null;
+        let venue = null;
+        let city = null;
+        let state = null;
+
+        // Check for place relationships (recorded at, performed at)
+        if (recording?.relations) {
+          console.log('Recording has relations:', recording.relations.length);
+
+          // Look for place relationships
+          const placeRelations = recording.relations.filter(rel =>
+            rel.type === 'recorded at' ||
+            rel.type === 'performance' ||
+            rel.place
+          );
+
+          if (placeRelations.length > 0) {
+            const placeRel = placeRelations[0];
+            console.log('Found place relation:', placeRel);
+
+            // Extract date from the relationship
+            if (placeRel.begin) {
+              performanceDate = placeRel.begin;
+              console.log('Found performance date from relationship:', performanceDate);
+            } else if (placeRel.end) {
+              performanceDate = placeRel.end;
+            }
+
+            // Extract venue information
+            if (placeRel.place) {
+              venue = placeRel.place.name;
+
+              // Extract location from place
+              if (placeRel.place.area) {
+                city = placeRel.place.area.name;
+
+                // Check for state in parent areas
+                if (placeRel.place.area['area-relation-list']) {
+                  const parentAreas = placeRel.place.area['area-relation-list'];
+                  // Look for state-level area
+                  const stateArea = parentAreas.find(a =>
+                    a.area?.type === 'State' ||
+                    a.area?.type === 'Province'
+                  );
+                  if (stateArea) {
+                    state = stateArea.area.name;
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Fallback to title extraction if no relationship data
+        if (!performanceDate && this.isLiveRecording(bestRelease)) {
+          // Try to extract performance date and venue from release title
+          const titleInfo = this.extractLiveInfoFromTitle(bestRelease?.title || '');
+          if (titleInfo) {
+            performanceDate = performanceDate || titleInfo.date;
+            venue = venue || titleInfo.venue;
+            city = city || titleInfo.city;
+            state = state || titleInfo.state;
+          }
+
+          // Try to get more info from the recording disambiguation
+          if (recording?.disambiguation) {
+            const disambInfo = this.extractLiveInfoFromTitle(recording.disambiguation);
+            if (disambInfo) {
+              performanceDate = performanceDate || disambInfo.date;
+              venue = venue || disambInfo.venue;
+              city = city || disambInfo.city;
+              state = state || disambInfo.state;
+            }
+          }
+        }
+
         const result = {
           source: 'acoustid',
           confidence: bestAcoustIDMatch.score,
@@ -743,8 +912,15 @@ class MusicBrainzService {
           artist: artistName,
           artists: bestAcoustIDMatch.artists || recording?.['artist-credit'],
           release: bestRelease,
+          releases: recording?.releases || [], // Include all releases with their status
           album: bestRelease?.title,
           releaseDate: bestRelease?.date,
+          performanceDate: performanceDate, // Add performance date
+          recordingDate: performanceDate || bestRelease?.date, // Recording date fallback
+          venue: venue,
+          city: city,
+          state: state,
+          status: bestRelease?.status, // Include the status directly
           isLive: this.isLiveRecording(bestRelease),
           duration: bestAcoustIDMatch.duration || recording?.length,
           fingerprint: 'generated' // Mark that we generated a unique fingerprint
@@ -753,8 +929,15 @@ class MusicBrainzService {
         console.log('\nFinal result to return:');
         console.log('  Title:', result.title);
         console.log('  Artist:', result.artist);
+        console.log('  Album:', result.album);
+        console.log('  Performance Date:', result.performanceDate || 'Not found');
+        console.log('  Venue:', result.venue || 'Not found');
+        console.log('  City:', result.city || 'Not found');
+        console.log('  State:', result.state || 'Not found');
+        console.log('  Status:', result.status || 'undefined');
         console.log('  Confidence:', (result.confidence * 100).toFixed(1) + '%');
         console.log('  Recording ID:', result.recordingId);
+        console.log('  Releases count:', result.releases?.length || 0);
         console.log('===== MUSICBRAINZ FINGERPRINT MATCH END (SUCCESS) =====\n');
 
         return result;

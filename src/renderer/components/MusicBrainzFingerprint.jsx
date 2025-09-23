@@ -46,9 +46,9 @@ const Overlay = styled.div`
 const Dialog = styled.div`
   background: ${theme.colors.surface};
   border-radius: 8px;
-  width: 90%;
-  max-width: 1000px;
-  height: 85vh;
+  width: 95%;
+  max-width: 1400px;
+  height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -90,6 +90,271 @@ const Header = styled.div`
     svg {
       width: 20px;
       height: 20px;
+    }
+  }
+`;
+
+// New tabbed navigation
+const TabNav = styled.div`
+  display: flex;
+  border-bottom: 1px solid ${theme.colors.border};
+  background: ${theme.colors.background};
+
+  .tab {
+    padding: ${theme.spacing.md} ${theme.spacing.lg};
+    background: none;
+    border: none;
+    color: ${theme.colors.text.secondary};
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    position: relative;
+    transition: color 0.2s;
+
+    &:hover {
+      color: ${theme.colors.text.primary};
+    }
+
+    &.active {
+      color: ${theme.colors.text.primary};
+
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: ${theme.colors.status.info};
+      }
+    }
+  }
+`;
+
+// Metadata comparison view
+const MetadataComparison = styled.div`
+  flex: 1;
+  padding: ${theme.spacing.lg};
+  overflow-y: auto;
+
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: ${theme.spacing.lg};
+
+    .column {
+      background: ${theme.colors.elevated};
+      border-radius: 8px;
+      padding: ${theme.spacing.lg};
+
+      h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: ${theme.spacing.lg};
+        color: ${theme.colors.text.primary};
+        display: flex;
+        align-items: center;
+        gap: ${theme.spacing.sm};
+
+        &.current {
+          color: ${theme.colors.text.secondary};
+        }
+
+        &.musicbrainz {
+          color: ${theme.colors.status.info};
+        }
+      }
+
+      .metadata-section {
+        margin-bottom: ${theme.spacing.lg};
+
+        h4 {
+          font-size: 13px;
+          font-weight: 600;
+          text-transform: uppercase;
+          color: ${theme.colors.text.dimmed};
+          margin-bottom: ${theme.spacing.sm};
+        }
+      }
+
+      .field {
+        margin-bottom: ${theme.spacing.md};
+
+        .label {
+          font-size: 12px;
+          color: ${theme.colors.text.dimmed};
+          margin-bottom: ${theme.spacing.xs};
+        }
+
+        .value {
+          font-size: 14px;
+          color: ${theme.colors.text.primary};
+          min-height: 24px;
+          padding: ${theme.spacing.xs} ${theme.spacing.sm};
+          background: ${theme.colors.background};
+          border-radius: 4px;
+
+          &.empty {
+            color: ${theme.colors.text.dimmed};
+            font-style: italic;
+          }
+
+          &.different {
+            background: ${theme.colors.status.warning}20;
+            border-left: 3px solid ${theme.colors.status.warning};
+          }
+
+          &.matched {
+            background: ${theme.colors.status.success}20;
+            border-left: 3px solid ${theme.colors.status.success};
+          }
+        }
+
+        .artwork {
+          width: 100%;
+          max-width: 200px;
+          height: 200px;
+          background: ${theme.colors.background};
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: ${theme.colors.text.dimmed};
+          margin-top: ${theme.spacing.sm};
+
+          img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 4px;
+          }
+
+          &.empty {
+            border: 2px dashed ${theme.colors.border};
+          }
+        }
+      }
+    }
+  }
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: ${theme.colors.background};
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: ${theme.colors.border};
+    border-radius: 4px;
+  }
+`;
+
+// Track comparison table
+const TrackComparison = styled.div`
+  padding: ${theme.spacing.lg};
+
+  .track-table {
+    background: ${theme.colors.elevated};
+    border-radius: 8px;
+    overflow: hidden;
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+
+      thead {
+        background: ${theme.colors.background};
+
+        th {
+          padding: ${theme.spacing.md};
+          text-align: left;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: uppercase;
+          color: ${theme.colors.text.dimmed};
+          border-bottom: 1px solid ${theme.colors.border};
+        }
+      }
+
+      tbody {
+        tr {
+          border-bottom: 1px solid ${theme.colors.border};
+
+          &:last-child {
+            border-bottom: none;
+          }
+
+          &:hover {
+            background: ${theme.colors.background};
+          }
+        }
+
+        td {
+          padding: ${theme.spacing.md};
+          font-size: 14px;
+          color: ${theme.colors.text.primary};
+
+          &.track-number {
+            width: 60px;
+            color: ${theme.colors.text.dimmed};
+          }
+
+          &.different {
+            background: ${theme.colors.status.warning}10;
+          }
+
+          &.matched {
+            background: ${theme.colors.status.success}10;
+          }
+
+          .empty {
+            color: ${theme.colors.text.dimmed};
+            font-style: italic;
+          }
+        }
+      }
+    }
+  }
+
+  .pagination {
+    display: flex;
+    justify-content: center;
+    gap: ${theme.spacing.sm};
+    margin-top: ${theme.spacing.lg};
+
+    button {
+      padding: ${theme.spacing.xs} ${theme.spacing.md};
+      background: ${theme.colors.elevated};
+      border: 1px solid ${theme.colors.border};
+      color: ${theme.colors.text.secondary};
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+
+      &:hover:not(:disabled) {
+        background: ${theme.colors.background};
+        color: ${theme.colors.text.primary};
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      &.active {
+        background: ${theme.colors.status.info};
+        color: white;
+        border-color: ${theme.colors.status.info};
+      }
+    }
+
+    .page-info {
+      display: flex;
+      align-items: center;
+      color: ${theme.colors.text.secondary};
+      font-size: 13px;
     }
   }
 `;
@@ -451,10 +716,31 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
   const [expandedMatches, setExpandedMatches] = useState({});
   const [showVerificationWarning, setShowVerificationWarning] = useState(false);
   const [processingState, setProcessingState] = useState('initializing'); // 'initializing', 'ready', 'processing', 'completed'
+  const [activeTab, setActiveTab] = useState('metadata'); // 'metadata' or 'tracks' or 'fingerprint'
+  const [currentMetadata, setCurrentMetadata] = useState(null);
+  const [musicBrainzMetadata, setMusicBrainzMetadata] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const tracksPerPage = 10;
 
   // Initialize tracks with fingerprint status
   useEffect(() => {
     if (initialData?.tracks) {
+      // Set current metadata from initialData
+      setCurrentMetadata({
+        artist: initialData.artist || 'Unknown Artist',
+        album: initialData.album || initialData.title || 'Unknown Album',
+        releaseDate: initialData.releaseDate || initialData.date,
+        performanceDate: initialData.performanceDate || initialData.date,
+        venue: initialData.venue?.name || initialData.venue || '',
+        city: initialData.venue?.city || initialData.city || '',
+        state: initialData.venue?.state || initialData.state || '',
+        releaseType: initialData.isOfficialRelease ? 'Official Release' : 'Bootleg/Audience Recording',
+        artworkUrl: initialData.artworkUrl || initialData.artwork_url || '',
+        notes: initialData.notes || '',
+        musicbrainzUrl: initialData.musicbrainz_url || '',
+        trackCount: initialData.tracks?.length || 0
+      });
+
       // Check if we should skip auto-processing
       if (skipAutoProcess || (isVerified && !window.confirm('This album is already verified. Do you want to re-process it anyway?'))) {
         // Just load tracks without fingerprinting
@@ -686,6 +972,43 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
               });
               return updated;
             });
+
+            // Update MusicBrainz metadata if this is the first match
+            if (!musicBrainzMetadata && trackMatches.length > 0) {
+              const bestMatch = trackMatches[0];
+              const concertInfo = extractConcertInfo(bestMatch.title);
+
+              setMusicBrainzMetadata({
+                artist: bestMatch.artist || 'Unknown Artist',
+                album: bestMatch.album || 'Unknown Album',
+                releaseDate: bestMatch.year || '',
+                performanceDate: concertInfo?.date || '',
+                venue: concertInfo?.venue || '',
+                city: concertInfo?.city || '',
+                state: concertInfo?.state || '',
+                releaseType: bestMatch.releaseType || 'Unknown',
+                releaseId: bestMatch.releaseId || '',
+                artworkUrl: '', // Will be fetched later
+                notes: bestMatch.isLive ? 'Live Recording' : '',
+                musicbrainzUrl: bestMatch.releaseId ? `https://musicbrainz.org/release/${bestMatch.releaseId}` : '',
+                trackCount: 0 // Will be updated later
+              });
+
+              // Fetch artwork if we have a release ID
+              if (bestMatch.releaseId) {
+                try {
+                  const coverArt = await window.api.invoke('musicbrainz:fetchCover', bestMatch.releaseId);
+                  if (coverArt) {
+                    setMusicBrainzMetadata(prev => ({
+                      ...prev,
+                      artworkUrl: coverArt.large || coverArt.original || ''
+                    }));
+                  }
+                } catch (error) {
+                  console.error('Error fetching cover art:', error);
+                }
+              }
+            }
           } else {
             // No fingerprint match, try metadata search
             await searchByMetadata(track, trackId);
@@ -1308,54 +1631,363 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
     console.log('=== APPLY MATCHES COMPLETED ===\n');
   };
 
+  // Helper function to compare values
+  const compareValues = (current, musicbrainz) => {
+    if (!current && !musicbrainz) return 'empty';
+    if (!current || !musicbrainz) return 'different';
+    return current.toLowerCase() === musicbrainz.toLowerCase() ? 'matched' : 'different';
+  };
+
+  // Get paginated tracks
+  const totalPages = Math.ceil(tracks.length / tracksPerPage);
+  const startIndex = (currentPage - 1) * tracksPerPage;
+  const endIndex = startIndex + tracksPerPage;
+  const paginatedTracks = tracks.slice(startIndex, endIndex);
+
   return (
     <Overlay onClick={onClose}>
       <Dialog onClick={(e) => e.stopPropagation()}>
         <Header>
           <h2>
             <Volume2 />
-            Audio Fingerprinting in Progress
+            MusicBrainz Metadata Comparison & Fingerprinting
           </h2>
           <button onClick={onClose}>
             <X />
           </button>
         </Header>
 
-        <OverallProgress>
-          <div className="progress-header">
-            <div className="progress-title">
-              Fingerprinting {stats.total} tracks
-            </div>
-            <div className="progress-stats">
-              <span className="success">
-                <CheckCircle />
-                {stats.matched} matched
-              </span>
-              <span className="warning">
-                <AlertTriangle />
-                {stats.total - stats.matched - stats.failed} pending
-              </span>
-              {stats.failed > 0 && (
-                <span className="error">
-                  <XCircle />
-                  {stats.failed} failed
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${overallProgress}%` }} />
-          </div>
-          {stats.processing > 0 && (
-            <div className="eta">
-              Estimated time remaining: ~{Math.ceil((stats.total - stats.completed) * 3)} seconds
-            </div>
-          )}
-        </OverallProgress>
+        <TabNav>
+          <button
+            className={`tab ${activeTab === 'metadata' ? 'active' : ''}`}
+            onClick={() => setActiveTab('metadata')}
+          >
+            Metadata Comparison
+          </button>
+          <button
+            className={`tab ${activeTab === 'tracks' ? 'active' : ''}`}
+            onClick={() => setActiveTab('tracks')}
+          >
+            Track List
+          </button>
+          <button
+            className={`tab ${activeTab === 'fingerprint' ? 'active' : ''}`}
+            onClick={() => setActiveTab('fingerprint')}
+          >
+            Fingerprinting Progress
+          </button>
+        </TabNav>
 
-        <TracksContainer>
-          {tracks.map((track, index) => (
-            <TrackCard key={track.id} $status={track.status}>
+        {activeTab === 'metadata' && (
+          <MetadataComparison>
+            <div className="comparison-grid">
+              {/* Current Metadata Column */}
+              <div className="column">
+                <h3 className="current">
+                  <Info />
+                  Current Metadata
+                </h3>
+
+                {currentMetadata && (
+                  <>
+                    <div className="metadata-section">
+                      <h4>Album Information</h4>
+                      <div className="field">
+                        <div className="label">Artist</div>
+                        <div className={`value ${!currentMetadata.artist ? 'empty' : ''}`}>
+                          {currentMetadata.artist || 'No artist'}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">Album Title</div>
+                        <div className={`value ${!currentMetadata.album ? 'empty' : ''}`}>
+                          {currentMetadata.album || 'No album title'}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">Release Type</div>
+                        <div className="value">
+                          {currentMetadata.releaseType}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">Performance Date</div>
+                        <div className={`value ${!currentMetadata.performanceDate ? 'empty' : ''}`}>
+                          {currentMetadata.performanceDate || 'No date'}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">Release Date</div>
+                        <div className={`value ${!currentMetadata.releaseDate ? 'empty' : ''}`}>
+                          {currentMetadata.releaseDate || 'No release date'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="metadata-section">
+                      <h4>Venue Information</h4>
+                      <div className="field">
+                        <div className="label">Venue</div>
+                        <div className={`value ${!currentMetadata.venue ? 'empty' : ''}`}>
+                          {currentMetadata.venue || 'No venue'}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">City</div>
+                        <div className={`value ${!currentMetadata.city ? 'empty' : ''}`}>
+                          {currentMetadata.city || 'No city'}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">State</div>
+                        <div className={`value ${!currentMetadata.state ? 'empty' : ''}`}>
+                          {currentMetadata.state || 'No state'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="metadata-section">
+                      <h4>Additional Information</h4>
+                      <div className="field">
+                        <div className="label">Track Count</div>
+                        <div className="value">
+                          {currentMetadata.trackCount} tracks
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">Album Artwork</div>
+                        <div className={`artwork ${!currentMetadata.artworkUrl ? 'empty' : ''}`}>
+                          {currentMetadata.artworkUrl ? (
+                            <img src={currentMetadata.artworkUrl} alt="Current album artwork" />
+                          ) : (
+                            'No artwork'
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* MusicBrainz Metadata Column */}
+              <div className="column">
+                <h3 className="musicbrainz">
+                  <Volume2 />
+                  MusicBrainz Metadata
+                </h3>
+
+                {musicBrainzMetadata ? (
+                  <>
+                    <div className="metadata-section">
+                      <h4>Album Information</h4>
+                      <div className="field">
+                        <div className="label">Artist</div>
+                        <div className={`value ${compareValues(currentMetadata?.artist, musicBrainzMetadata.artist)}`}>
+                          {musicBrainzMetadata.artist || 'No artist'}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">Album Title</div>
+                        <div className={`value ${compareValues(currentMetadata?.album, musicBrainzMetadata.album)}`}>
+                          {musicBrainzMetadata.album || 'No album title'}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">Release Type</div>
+                        <div className={`value ${compareValues(currentMetadata?.releaseType, musicBrainzMetadata.releaseType)}`}>
+                          {musicBrainzMetadata.releaseType}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">Performance Date</div>
+                        <div className={`value ${compareValues(currentMetadata?.performanceDate, musicBrainzMetadata.performanceDate)}`}>
+                          {musicBrainzMetadata.performanceDate || 'No date'}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">Release Date</div>
+                        <div className={`value ${compareValues(currentMetadata?.releaseDate, musicBrainzMetadata.releaseDate)}`}>
+                          {musicBrainzMetadata.releaseDate || 'No release date'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="metadata-section">
+                      <h4>Venue Information</h4>
+                      <div className="field">
+                        <div className="label">Venue</div>
+                        <div className={`value ${compareValues(currentMetadata?.venue, musicBrainzMetadata.venue)}`}>
+                          {musicBrainzMetadata.venue || 'No venue'}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">City</div>
+                        <div className={`value ${compareValues(currentMetadata?.city, musicBrainzMetadata.city)}`}>
+                          {musicBrainzMetadata.city || 'No city'}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">State</div>
+                        <div className={`value ${compareValues(currentMetadata?.state, musicBrainzMetadata.state)}`}>
+                          {musicBrainzMetadata.state || 'No state'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="metadata-section">
+                      <h4>Additional Information</h4>
+                      <div className="field">
+                        <div className="label">MusicBrainz URL</div>
+                        <div className="value">
+                          {musicBrainzMetadata.musicbrainzUrl ? (
+                            <a href={musicBrainzMetadata.musicbrainzUrl} target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.status.info }}>
+                              View on MusicBrainz →
+                            </a>
+                          ) : (
+                            <span className="empty">No MusicBrainz link</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="label">Album Artwork</div>
+                        <div className={`artwork ${!musicBrainzMetadata.artworkUrl ? 'empty' : ''}`}>
+                          {musicBrainzMetadata.artworkUrl ? (
+                            <img src={musicBrainzMetadata.artworkUrl} alt="MusicBrainz album artwork" />
+                          ) : (
+                            'No artwork found'
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ padding: theme.spacing.lg, textAlign: 'center', color: theme.colors.text.dimmed }}>
+                    {processingState === 'ready' ? (
+                      'Click "Start Fingerprinting" to fetch MusicBrainz metadata'
+                    ) : processingState === 'processing' ? (
+                      'Fingerprinting in progress...'
+                    ) : (
+                      'No MusicBrainz metadata available yet'
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </MetadataComparison>
+        )}
+
+        {activeTab === 'tracks' && (
+          <TrackComparison>
+            <div className="track-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Current Title</th>
+                    <th>MusicBrainz Title</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedTracks.map((track, index) => {
+                    const globalIndex = startIndex + index;
+                    const mbMatch = track.matches?.[0]; // Best match from MusicBrainz
+                    return (
+                      <tr key={track.id}>
+                        <td className="track-number">{globalIndex + 1}</td>
+                        <td>{track.displayTitle}</td>
+                        <td className={mbMatch?.title ? (compareValues(track.displayTitle, mbMatch.title)) : ''}>
+                          {mbMatch?.title ? normalizeSongTitle(mbMatch.title) : <span className="empty">No match</span>}
+                        </td>
+                        <td>{formatDuration(track.duration)}</td>
+                        <td>
+                          <span style={{
+                            color: track.status === 'matched' ? theme.colors.status.success :
+                                   track.status === 'error' ? theme.colors.status.error :
+                                   theme.colors.text.secondary
+                          }}>
+                            {track.statusMessage || 'Pending'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="pagination">
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                >
+                  First
+                </button>
+                <button
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </button>
+                <div className="page-info">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <button
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </button>
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                >
+                  Last
+                </button>
+              </div>
+            )}
+          </TrackComparison>
+        )}
+
+        {activeTab === 'fingerprint' && (
+          <>
+            <OverallProgress>
+              <div className="progress-header">
+                <div className="progress-title">
+                  Fingerprinting {stats.total} tracks
+                </div>
+                <div className="progress-stats">
+                  <span className="success">
+                    <CheckCircle />
+                    {stats.matched} matched
+                  </span>
+                  <span className="warning">
+                    <AlertTriangle />
+                    {stats.total - stats.matched - stats.failed} pending
+                  </span>
+                  {stats.failed > 0 && (
+                    <span className="error">
+                      <XCircle />
+                      {stats.failed} failed
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${overallProgress}%` }} />
+              </div>
+              {stats.processing > 0 && (
+                <div className="eta">
+                  Estimated time remaining: ~{Math.ceil((stats.total - stats.completed) * 3)} seconds
+                </div>
+              )}
+            </OverallProgress>
+
+            <TracksContainer>
+              {tracks.map((track, index) => (
+                <TrackCard key={track.id} $status={track.status}>
               <TrackHeader $status={track.status}>
                 <div className="track-number">{index + 1}.</div>
                 <div className="track-info">
@@ -1460,9 +2092,11 @@ function MusicBrainzFingerprint({ initialData, onApply, onClose, isVerified = fa
                   </span>
                 </StatusMessage>
               )}
-            </TrackCard>
-          ))}
-        </TracksContainer>
+              </TrackCard>
+            ))}
+          </TracksContainer>
+          </>
+        )}
 
         <Footer>
           <div className="summary">

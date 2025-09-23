@@ -268,7 +268,8 @@ ipcMain.handle('import:processFiles', async (event, files, options) => {
       // First get basic metadata without fingerprinting
       const analyzed = await importService.analyzeFiles([file.path], { ...options, enableFingerprinting: false });
       if (analyzed && analyzed.length > 0) {
-        let fileData = { ...file, ...analyzed[0] };
+        // Merge analyzed data but preserve user-edited metadata from UI
+        let fileData = { ...analyzed[0], ...file };
 
         // If fingerprinting is enabled, do it here directly (like the working MusicBrainz lookup)
         if (options.enableFingerprinting) {
@@ -398,11 +399,16 @@ ipcMain.handle('import:processFiles', async (event, files, options) => {
         continue;
       }
 
-      // Use pre-analyzed metadata
-      let fileWithMetadata = analyzedFiles.find(af => af.path === file.path) || file;
+      // Use pre-analyzed metadata but preserve user-edited values
+      let analyzedData = analyzedFiles.find(af => af.path === file.path);
+      let fileWithMetadata = analyzedData ? { ...analyzedData, ...file } : file;
       console.log('\n>>> Processing file with metadata:', path.basename(fileWithMetadata.path));
       console.log('  Title from analysis:', fileWithMetadata.title);
       console.log('  Album:', fileWithMetadata.album);
+      console.log('  Date (user-edited):', fileWithMetadata.date);
+      console.log('  Venue (user-edited):', fileWithMetadata.venue);
+      console.log('  City:', fileWithMetadata.city);
+      console.log('  State:', fileWithMetadata.state);
       console.log('  Fingerprinting successful?', fileWithMetadata.fingerprintingSuccessful);
       if (fileWithMetadata.fingerprintMatch) {
         console.log('  Fingerprint match title:', fileWithMetadata.fingerprintMatch.title);
