@@ -2,6 +2,10 @@ const { app, BrowserWindow, ipcMain, dialog, protocol, net } = require('electron
 const path = require('path');
 const fs = require('fs');
 
+// Import utilities
+const logger = require('./utils/logger');
+const pathValidator = require('./utils/path-validator');
+
 // Import services
 const DatabaseService = require('./services/database');
 const ImportService = require('./services/import');
@@ -14,23 +18,44 @@ const MetadataExtractor = require('./services/metadata-extractor');
 let mainWindow;
 let db;
 
-// Suppress SQLite duplicate column errors
+// Global error handlers with proper logging
 process.on('uncaughtException', (error) => {
-  if (error.message && error.message.includes('duplicate column')) {
-    // Silently ignore duplicate column errors
+  logger.error('Uncaught exception', { error: error.message, stack: error.stack });
+
+  // Only suppress known safe migration errors
+  if (error.code === 'SQLITE_ERROR' && error.message && error.message.includes('duplicate column')) {
+    logger.warn('Ignoring duplicate column migration error');
     return;
   }
-  // Log other errors but don't crash
-  console.error('Uncaught exception:', error);
+
+  // For all other errors, show dialog and exit gracefully
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    dialog.showErrorBox(
+      'Application Error',
+      `A critical error occurred: ${error.message}\n\nThe application will now close.`
+    );
+  }
+
+  // Give time for the dialog to show
+  setTimeout(() => {
+    app.quit();
+  }, 100);
 });
 
-process.on('unhandledRejection', (error) => {
-  if (error && error.message && error.message.includes('duplicate column')) {
-    // Silently ignore duplicate column errors
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled rejection', {
+    reason: reason?.message || reason,
+    stack: reason?.stack
+  });
+
+  // Only suppress known safe migration errors
+  if (reason && reason.message && reason.message.includes('duplicate column')) {
+    logger.warn('Ignoring duplicate column migration error in promise');
     return;
   }
-  // Log other errors
-  console.error('Unhandled rejection:', error);
+
+  // Log but don't crash for unhandled rejections (they might be handled elsewhere)
+  logger.warn('Unhandled promise rejection detected', { reason });
 });
 
 // Register custom protocol for audio streaming
@@ -47,8 +72,9 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: false, // Allow loading local files
-      allowRunningInsecureContent: true
+      webSecurity: true, // ✅ SECURITY: Keep web security enabled
+      allowRunningInsecureContent: false, // ✅ SECURITY: Disable insecure content
+      enableRemoteModule: false // ✅ SECURITY: Disable remote module
     },
     icon: path.join(__dirname, '../../public/icon.png'),
     titleBarStyle: 'hiddenInset',
@@ -66,16 +92,16 @@ async function createWindow() {
 
       for (const port of ports) {
         try {
-          console.log(`Trying to connect to Vite on port ${port}...`);
+          logger.debug(`Trying to connect to Vite on port ${port}...`);
           await mainWindow.loadURL(`http://localhost:${port}`);
-          console.log(`Connected to Vite dev server on port ${port}`);
+          logger.info(`Connected to Vite dev server on port ${port}`);
           return;
         } catch (err) {
           // Continue to next port
         }
       }
 
-      console.log('Failed to connect to Vite dev server on any port. Retrying...');
+      logger.warn('Failed to connect to Vite dev server on any port. Retrying...');
       setTimeout(loadDevServer, 3000);
     };
 
@@ -106,11 +132,34 @@ let audioServer;
 function createAudioServer() {
   audioServer = http.createServer((req, res) => {
     const parsedUrl = parseUrl(req.url, true);
-    const filePath = decodeURIComponent(parsedUrl.query.path || '');
+    const requestedPath = decodeURIComponent(parsedUrl.query.path || '');
 
-    console.log('Audio server request for:', filePath);
+    logger.debug('Audio server request', { path: requestedPath });
 
-    if (!filePath || !fs.existsSync(filePath)) {
+    // ✅ SECURITY: Validate path before serving
+    if (!requestedPath) {
+      logger.warn('Audio server: Empty path requested');
+      res.writeHead(400);
+      res.end('Bad Request: Path is required');
+      return;
+    }
+
+    // Validate path is safe
+    let filePath;
+    try {
+      filePath = pathValidator.validatePath(requestedPath);
+    } catch (error) {
+      logger.warn('Audio server: Path validation failed', {
+        requestedPath,
+        error: error.message
+      });
+      res.writeHead(403);
+      res.end('Access Denied');
+      return;
+    }
+
+    if (!fs.existsSync(filePath)) {
+      logger.warn('Audio server: File not found', { filePath });
       res.writeHead(404);
       res.end('File not found');
       return;
@@ -158,14 +207,47 @@ function createAudioServer() {
 
   audioServer.listen(0, '127.0.0.1', () => {
     const port = audioServer.address().port;
-    console.log(`Audio server listening on http://127.0.0.1:${port}`);
+    logger.info(`Audio server listening on http://127.0.0.1:${port}`);
     // Store the port for later use
     global.audioServerPort = port;
   });
 }
 
+/**
+ * Initialize allowed paths for audio server
+ */
+function initializeAllowedPaths() {
+  const Store = require('electron-store');
+  const store = new Store();
+
+  // Add library path if set
+  const libraryPath = store.get('libraryPath');
+  if (libraryPath && fs.existsSync(libraryPath)) {
+    pathValidator.addAllowedPath(libraryPath);
+    logger.info('Added library path to allowed paths', { libraryPath });
+  }
+
+  // Add user data directory for temporary files
+  const userDataPath = app.getPath('userData');
+  pathValidator.addAllowedPath(userDataPath);
+  logger.info('Added user data path to allowed paths', { userDataPath });
+
+  // Add temp directory
+  const tempPath = app.getPath('temp');
+  pathValidator.addAllowedPath(tempPath);
+  logger.debug('Added temp path to allowed paths', { tempPath });
+}
+
 // App event handlers
 app.whenReady().then(async () => {
+  logger.info('Application starting', {
+    version: app.getVersion(),
+    isPackaged: app.isPackaged
+  });
+
+  // Initialize allowed paths for security
+  initializeAllowedPaths();
+
   // Create audio server
   createAudioServer();
 
