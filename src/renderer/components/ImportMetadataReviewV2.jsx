@@ -824,6 +824,7 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
       selections.artist = group.artist ? 'current' : 'musicbrainz';
       selections.album = group.album ? 'current' : 'musicbrainz';
       selections.date = group.date && group.date !== 'Unknown-Date' && group.date !== '' ? 'current' : 'musicbrainz';
+      selections.releaseDate = group.releaseDate && group.releaseDate !== '' ? 'current' : 'musicbrainz';
       selections.venue = group.venue && group.venue !== 'the' && group.venue !== 'Unknown Venue' && group.venue !== '' ? 'current' : 'musicbrainz';
       selections.city = group.city ? 'current' : 'musicbrainz';
       selections.state = group.state ? 'current' : 'musicbrainz';
@@ -898,6 +899,8 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
         // Special handling for date field - use performanceDate if available
         if (field === 'date') {
           value = group.musicbrainzData.performanceDate || group.musicbrainzData.releaseDate || '';
+        } else if (field === 'releaseDate') {
+          value = group.musicbrainzData.releaseDate || group.musicbrainzData.date || '';
         } else {
           value = group.musicbrainzData[field] || '';
         }
@@ -947,6 +950,8 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
       // Special handling for date field - use performanceDate if available
       if (field === 'date') {
         mbValue = mbData.performanceDate || mbData.releaseDate || mbData.date;
+      } else if (field === 'releaseDate') {
+        mbValue = mbData.releaseDate || mbData.date;
       }
 
       // Check for invalid current values
@@ -1201,6 +1206,8 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
     // Special handling for date field
     if (field === 'date') {
       mbValue = group.musicbrainzData?.performanceDate || group.musicbrainzData?.releaseDate;
+    } else if (field === 'releaseDate') {
+      mbValue = group.musicbrainzData?.releaseDate || group.musicbrainzData?.date;
     }
 
     // Check for invalid/empty values
@@ -1418,7 +1425,7 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
               <div className="title">
                 <ChevronRight className={expandedSections.basic ? 'expanded' : ''} />
                 Basic Information
-                <span className="count">3 fields</span>
+                <span className="count">4 fields</span>
               </div>
               <div className="section-status">
                 <div className="indicator success">
@@ -1578,6 +1585,68 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
                     <button
                       onClick={() => handleFieldAction('date', 'edit')}
                       title="Edit date manually (YYYY-MM-DD)"
+                    >
+                      <Edit2 />
+                    </button>
+                  </ActionButtons>
+                </ComparisonRow>
+              </FieldComparison>
+
+              {/* Release Date Field (for official live albums) */}
+              <FieldComparison>
+                <FieldHeader>
+                  <Calendar />
+                  Release Date
+                  <div className={`status-icon ${getFieldStatus('releaseDate')}`}>
+                    {getFieldStatus('releaseDate') === 'match' && <CheckCircle />}
+                    {getFieldStatus('releaseDate') === 'differ' && <AlertTriangle />}
+                    {getFieldStatus('releaseDate') === 'missing' && <XCircle />}
+                  </div>
+                </FieldHeader>
+                <ComparisonRow>
+                  <ValueBox className={`current ${fieldSelections.releaseDate === 'current' ? 'selected' : ''}`}>
+                    <span className="label">Current</span>
+                    {editMode.releaseDate ? (
+                      <input
+                        type="text"
+                        value={group.releaseDate || ''}
+                        onChange={(e) => updateGroupMetadata(0, 'releaseDate', e.target.value)}
+                        onBlur={() => setEditMode(prev => ({ ...prev, releaseDate: false }))}
+                        placeholder="YYYY-MM-DD"
+                        pattern="\d{4}-\d{2}-\d{2}"
+                        title="Format: YYYY-MM-DD (when album was released)"
+                        style={{
+                          borderColor: group.releaseDate && !/^\d{4}-\d{2}-\d{2}$/.test(group.releaseDate) ? '#ef4444' : undefined,
+                          color: group.releaseDate && !/^\d{4}-\d{2}-\d{2}$/.test(group.releaseDate) ? '#ef4444' : undefined
+                        }}
+                        autoFocus
+                      />
+                    ) : (
+                      group.releaseDate || 'Not specified'
+                    )}
+                  </ValueBox>
+                  <ValueBox className={`musicbrainz ${!mbData.releaseDate ? 'empty' : ''} ${fieldSelections.releaseDate === 'musicbrainz' ? 'selected' : ''}`}>
+                    <span className="label">MusicBrainz</span>
+                    {mbData.releaseDate || mbData.date || 'Not found'}
+                  </ValueBox>
+                  <ActionButtons>
+                    <button
+                      className={fieldSelections.releaseDate === 'current' ? 'active' : ''}
+                      onClick={() => handleFieldAction('releaseDate', 'current')}
+                      title="Keep current release date"
+                    >
+                      <Copy />
+                    </button>
+                    <button
+                      className={fieldSelections.releaseDate === 'musicbrainz' ? 'active' : ''}
+                      onClick={() => handleFieldAction('releaseDate', 'musicbrainz')}
+                      title="Use release date from MusicBrainz"
+                    >
+                      <Music />
+                    </button>
+                    <button
+                      onClick={() => handleFieldAction('releaseDate', 'edit')}
+                      title="Edit release date manually (YYYY-MM-DD)"
                     >
                       <Edit2 />
                     </button>
