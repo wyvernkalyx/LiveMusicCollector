@@ -248,6 +248,19 @@ class DatabaseService {
       }
     }
 
+    // Add release_date column to shows if it doesn't exist
+    // This is for official releases where release date differs from performance date
+    if (!(await checkColumn('shows', 'release_date'))) {
+      try {
+        await this.runAsync('ALTER TABLE shows ADD COLUMN release_date DATE');
+        console.log('Added release_date column to shows table');
+        console.log('  shows.date = performance date (when concert happened)');
+        console.log('  shows.release_date = release date (when album was released)');
+      } catch (err) {
+        console.log('Column release_date may already exist:', err.message);
+      }
+    }
+
     // Add new track metadata columns if they don't exist
     if (!(await checkColumn('tracks', 'disc_number'))) {
       try {

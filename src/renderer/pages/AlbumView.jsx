@@ -1810,7 +1810,9 @@ function AlbumView() {
             date: album.date,
             trackCount: tracks.length,
             tracks: tracks.map(track => ({
-              title: track.song_title || track.title || track.file_path?.split(/[\\\/]/).pop()?.replace(/\.[^.]+$/, '') || `Track ${track.track_number}`,
+              // Use song_name from database (already stored during import)
+              // Never fall back to filename - that's poor UX
+              title: track.song_name || track.song_title || 'Unknown Track',
               path: track.file_path,
               duration: track.duration,
               trackNumber: track.track_number,
