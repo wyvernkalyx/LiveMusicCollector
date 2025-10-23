@@ -267,6 +267,35 @@ class MusicBrainzService {
   parseReleaseData(release) {
     if (!release) return null;
 
+    // Extract performance date from release title (for live albums)
+    // This is the actual concert date, different from release.date (when album was released)
+    const releaseGroup = release['release-group'];
+    const isLiveRelease = releaseGroup?.['secondary-types']?.includes('Live') ||
+                          releaseGroup?.['primary-type'] === 'Live';
+
+    let performanceDate = null;
+    let performanceVenue = null;
+    let performanceCity = null;
+    let performanceState = null;
+
+    if (isLiveRelease && release.title) {
+      const liveInfo = this.extractLiveInfoFromTitle(release.title);
+      if (liveInfo) {
+        performanceDate = liveInfo.date;
+        performanceVenue = liveInfo.venue;
+        performanceCity = liveInfo.city;
+        performanceState = liveInfo.state;
+
+        console.log('Extracted performance info from title:', {
+          title: release.title,
+          performanceDate,
+          venue: performanceVenue,
+          city: performanceCity,
+          state: performanceState
+        });
+      }
+    }
+
     const tracks = [];
     const segues = new Map(); // Track segue relationships
 
@@ -311,10 +340,14 @@ class MusicBrainzService {
               }
             }
 
-            // If still no date and it's not a live track, use the release date
-            if (!trackDate && !isLiveTrack && release.date) {
-              trackDate = release.date;
+            // CRITICAL FIX: Use performance date for live releases, not release date
+            // For live albums, use the extracted performance date
+            if (!trackDate && isLiveRelease && performanceDate) {
+              trackDate = performanceDate;
             }
+
+            // If still no date and it's not a live track, don't set a date
+            // (We'll use release.date separately as releaseDate, not as trackDate)
 
             tracks.push({
               position: track.position,
@@ -342,14 +375,18 @@ class MusicBrainzService {
     }
 
     // Get release group information for original release date
-    const releaseGroup = release['release-group'];
     const originalReleaseDate = releaseGroup?.['first-release-date'] || release.date;
 
     return {
       id: release.id,
       title: release.title,
       artist: release['artist-credit']?.[0]?.artist?.name,
-      date: release.date,
+      date: release.date, // When the album was RELEASED
+      releaseDate: release.date, // Explicit: when album was released (for official live albums)
+      performanceDate: performanceDate, // CRITICAL: when concert HAPPENED (extracted from title)
+      performanceVenue: performanceVenue, // Venue name from title
+      performanceCity: performanceCity, // City from title
+      performanceState: performanceState, // State from title
       originalReleaseDate: originalReleaseDate,
       releaseVersion: release.disambiguation || '',
       country: release.country,
@@ -365,7 +402,7 @@ class MusicBrainzService {
       discCount: release.media?.length || 1,
       segues: Array.from(segues.keys()),
       isCompilation: releaseGroup?.['secondary-types']?.includes('Compilation'),
-      isLive: releaseGroup?.['secondary-types']?.includes('Live'),
+      isLive: isLiveRelease, // Use the isLiveRelease flag we already calculated
       isOfficial: release.status === 'Official',
       coverArt: release['cover-art-archive'] ? {
         exists: release['cover-art-archive'].artwork,
