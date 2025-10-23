@@ -1227,7 +1227,7 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
     const album = group.album || '';
 
     // Check for invalid values
-    const hasValidDate = date && date !== 'Unknown-Date' && date !== '';
+    const hasValidDate = date && date !== 'Unknown-Date' && date !== '' && /^\d{4}-\d{2}-\d{2}$/.test(date);
     const hasValidVenue = venue && venue !== 'Unknown Venue' && venue !== 'the' && venue !== '';
 
     let folderName;
@@ -1535,7 +1535,7 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
                   </div>
                 </FieldHeader>
                 <ComparisonRow>
-                  <ValueBox className={`current ${!group.date || group.date === 'Unknown-Date' ? 'error' : ''} ${fieldSelections.date === 'current' ? 'selected' : ''}`}>
+                  <ValueBox className={`current ${!group.date || group.date === 'Unknown-Date' || (group.date && !/^\d{4}-\d{2}-\d{2}$/.test(group.date)) ? 'error' : ''} ${fieldSelections.date === 'current' ? 'selected' : ''}`}>
                     <span className="label">Current</span>
                     {editMode.date ? (
                       <input
@@ -1544,6 +1544,12 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
                         onChange={(e) => updateGroupMetadata(0, 'date', e.target.value)}
                         onBlur={() => setEditMode(prev => ({ ...prev, date: false }))}
                         placeholder="YYYY-MM-DD"
+                        pattern="\d{4}-\d{2}-\d{2}"
+                        title="Format: YYYY-MM-DD (e.g., 1969-06-05)"
+                        style={{
+                          borderColor: group.date && !/^\d{4}-\d{2}-\d{2}$/.test(group.date) ? '#ef4444' : undefined,
+                          color: group.date && !/^\d{4}-\d{2}-\d{2}$/.test(group.date) ? '#ef4444' : undefined
+                        }}
                         autoFocus
                       />
                     ) : (
@@ -2229,7 +2235,7 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
                 gap: '6px'
               }}>
                 <AlertCircle size={14} />
-                {!preview.hasValidDate && 'Date is required'}
+                {!preview.hasValidDate && 'Date is required (format: YYYY-MM-DD)'}
                 {!preview.hasValidDate && !preview.hasValidVenue && ' • '}
                 {!preview.hasValidVenue && 'Venue is required'}
               </span>
@@ -2243,7 +2249,7 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
             <button
               className="primary"
               onClick={() => onConfirm(editedGroups)}
-              disabled={!group.date || group.date === 'Unknown-Date' || group.date === '' || !group.venue || group.venue === 'the' || group.venue === 'Unknown Venue' || group.venue === ''}
+              disabled={!group.date || group.date === 'Unknown-Date' || group.date === '' || !/^\d{4}-\d{2}-\d{2}$/.test(group.date) || !group.venue || group.venue === 'the' || group.venue === 'Unknown Venue' || group.venue === ''}
             >
               <ChevronRight />
               Continue Import

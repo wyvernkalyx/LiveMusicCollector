@@ -516,18 +516,24 @@ function TrackManagementPage() {
           </button>
 
           <input
-            type="date"
+            type="text"
             value={bulkDate}
             onChange={(e) => setBulkDate(e.target.value)}
-            title="Set performance date for tracks"
+            placeholder="YYYY-MM-DD"
+            pattern="\d{4}-\d{2}-\d{2}"
+            title="Set performance date for tracks (format: YYYY-MM-DD)"
+            style={{
+              borderColor: bulkDate && !/^\d{4}-\d{2}-\d{2}$/.test(bulkDate) ? 'red' : undefined,
+              color: bulkDate && !/^\d{4}-\d{2}-\d{2}$/.test(bulkDate) ? 'red' : undefined
+            }}
           />
 
           <button
             onClick={handleBulkDateUpdate}
-            disabled={!bulkDate}
+            disabled={!bulkDate || !/^\d{4}-\d{2}-\d{2}$/.test(bulkDate)}
             title={selectedTracks.size > 0
-              ? `Apply date to ${selectedTracks.size} selected tracks`
-              : 'Apply date to all tracks'
+              ? `Apply date to ${selectedTracks.size} selected tracks (format: YYYY-MM-DD)`
+              : 'Apply date to all tracks (format: YYYY-MM-DD)'
             }
           >
             <Calendar />
