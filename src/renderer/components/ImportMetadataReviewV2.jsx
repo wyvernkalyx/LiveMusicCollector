@@ -2121,38 +2121,47 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
                           {hasMatch ? (
                             <div className="match-details">
                               <div className="detail-item">
+                                <div className="label">Suggested Title</div>
+                                <div className="value" style={{
+                                  color: theme.colors.accent.primary,
+                                  fontWeight: '600'
+                                }}>
+                                  {match.title && group.date ? `${match.title} (${group.date})` : match.title}
+                                </div>
+                              </div>
+                              <div className="detail-item">
                                 <div className="label">Artist</div>
-                                <div className="value">{match.artist || <span className="missing">Not found</span>}</div>
+                                <div className="value">{group.artist || match.artist || <span className="missing">Not found</span>}</div>
                               </div>
                               <div className="detail-item">
                                 <div className="label">Album</div>
-                                <div className="value">{match.album || <span className="missing">Not found</span>}</div>
+                                <div className="value">{group.album || match.album || <span className="missing">Not found</span>}</div>
                               </div>
                               <div className="detail-item">
                                 <div className="label">Performance Date</div>
-                                <div className="value" style={match.performanceDate ? {
+                                <div className="value" style={(group.date || match.performanceDate) ? {
                                   color: theme.colors.accent.primary,
                                   fontWeight: '600'
                                 } : {}}>
-                                  {match.performanceDate || <span className="missing">Not found</span>}
+                                  {group.date || match.performanceDate || <span className="missing">Not found</span>}
                                 </div>
                               </div>
                               <div className="detail-item">
                                 <div className="label">Venue</div>
                                 <div className="value">
-                                  {match.venue || <span className="missing">Not found</span>}
+                                  {group.venue || match.venue || <span className="missing">Not found</span>}
                                 </div>
                               </div>
                               <div className="detail-item">
                                 <div className="label">City</div>
                                 <div className="value">
-                                  {match.city || <span className="missing">Not found</span>}
+                                  {group.city || match.city || <span className="missing">Not found</span>}
                                 </div>
                               </div>
                               <div className="detail-item">
                                 <div className="label">State</div>
                                 <div className="value">
-                                  {match.state || <span className="missing">Not found</span>}
+                                  {group.state || match.state || <span className="missing">Not found</span>}
                                 </div>
                               </div>
                               {match.duration && (
