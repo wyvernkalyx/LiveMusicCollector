@@ -675,6 +675,10 @@ ipcMain.handle('lookup:findBestMatch', async (event, date, venue, sourceType) =>
 // MusicBrainz API lookup
 const musicBrainzService = new MusicBrainzService();
 
+// Metadata writer service
+const MetadataWriter = require('./services/metadata-writer');
+const metadataWriter = new MetadataWriter();
+
 ipcMain.handle('musicbrainz:search', async (event, searchQuery) => {
   try {
     console.log('MusicBrainz search request:', searchQuery);
@@ -954,6 +958,54 @@ ipcMain.handle('audio:checkFile', async (event, filePath) => {
   } catch (error) {
     console.error('Error checking audio file:', error);
     return { exists: false, error: error.message };
+  }
+});
+
+// Metadata writing handlers
+ipcMain.handle('metadata:write', async (event, filePath, metadata, options) => {
+  try {
+    console.log('Writing metadata to:', filePath);
+    const success = await metadataWriter.writeMetadata(filePath, metadata, options);
+    return { success };
+  } catch (error) {
+    console.error('Error writing metadata:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('metadata:batchWrite', async (event, files, options) => {
+  try {
+    console.log(`Batch writing metadata to ${files.length} files`);
+
+    const results = await metadataWriter.batchWriteMetadata(
+      files,
+      options,
+      (progress) => {
+        // Send progress updates to renderer
+        mainWindow.webContents.send('metadata:progress', progress);
+      }
+    );
+
+    return results;
+  } catch (error) {
+    console.error('Error batch writing metadata:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('metadata:checkTools', async () => {
+  try {
+    const hasMetaflac = await metadataWriter.checkCommandAvailable('metaflac');
+    const hasFFmpeg = await metadataWriter.checkCommandAvailable('ffmpeg');
+
+    return {
+      metaflac: hasMetaflac,
+      ffmpeg: hasFFmpeg,
+      ready: hasMetaflac || hasFFmpeg
+    };
+  } catch (error) {
+    console.error('Error checking metadata tools:', error);
+    return { metaflac: false, ffmpeg: false, ready: false };
   }
 });
 

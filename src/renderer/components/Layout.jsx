@@ -14,7 +14,8 @@ import {
   Mic,
   Star,
   Clock,
-  Menu
+  Menu,
+  Edit3
 } from 'lucide-react';
 import Player from './Player';
 import { theme } from '../styles/globalStyles';
@@ -167,6 +168,7 @@ function Layout({ children }) {
   const navItems = [
     { path: '/', label: 'All Shows', icon: Music, count: stats.totalShows },
     { path: '/import', label: 'Import Music', icon: Download },
+    { path: '/metadata-editor', label: 'Metadata Editor', icon: Edit3 },
     { path: '/search', label: 'Advanced Search', icon: Search },
     { path: '/settings', label: 'Settings', icon: Settings },
   ];

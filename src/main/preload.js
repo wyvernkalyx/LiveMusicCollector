@@ -72,10 +72,28 @@ contextBridge.exposeInMainWorld('api', {
   // File metadata operations
   getFileMetadata: (filePath) => ipcRenderer.invoke('file:getMetadata', filePath),
 
+  // Metadata writing operations
+  writeMetadata: (filePath, metadata, options) => ipcRenderer.invoke('metadata:write', filePath, metadata, options),
+  batchWriteMetadata: (files, options) => ipcRenderer.invoke('metadata:batchWrite', files, options),
+  checkMetadataTools: () => ipcRenderer.invoke('metadata:checkTools'),
+  onMetadataProgress: (callback) => {
+    ipcRenderer.on('metadata:progress', (event, progress) => callback(progress));
+  },
+
   // MusicBrainz API
   invoke: (channel, ...args) => {
     // Allow only specific channels for security
-    const validChannels = ['musicbrainz:search', 'musicbrainz:fingerprint', 'musicbrainz:fetchCover', 'file:getMetadata', 'audio:checkFile', 'audio:getFileUrl'];
+    const validChannels = [
+      'musicbrainz:search',
+      'musicbrainz:fingerprint',
+      'musicbrainz:fetchCover',
+      'file:getMetadata',
+      'audio:checkFile',
+      'audio:getFileUrl',
+      'metadata:write',
+      'metadata:batchWrite',
+      'metadata:checkTools'
+    ];
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);
     }

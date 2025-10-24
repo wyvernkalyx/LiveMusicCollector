@@ -6,6 +6,7 @@ import ImportPage from './pages/ImportPage';
 import SearchPage from './pages/SearchPage';
 import SettingsPage from './pages/SettingsPage';
 import AlbumView from './pages/AlbumView';
+import MetadataEditorPage from './pages/MetadataEditorPage';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
       <Routes>
         <Route path="/" element={<LibraryPage />} />
         <Route path="/import" element={<ImportPage />} />
+        <Route path="/metadata-editor" element={<MetadataEditorPage />} />
         <Route path="/album/:id" element={<AlbumView />} />
         <Route path="/show/:id" element={<AlbumView />} />
         <Route path="/search" element={<SearchPage />} />
