@@ -1535,6 +1535,15 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
                 <FieldHeader>
                   <Calendar />
                   Performance Date
+                  <span style={{
+                    marginLeft: '8px',
+                    fontSize: '11px',
+                    color: theme.colors.text.tertiary,
+                    fontStyle: 'italic',
+                    fontWeight: 'normal'
+                  }}>
+                    (applies to all tracks)
+                  </span>
                   <div className={`status-icon ${getFieldStatus('date')}`}>
                     {getFieldStatus('date') === 'match' && <CheckCircle />}
                     {getFieldStatus('date') === 'differ' && <AlertTriangle />}
@@ -1597,6 +1606,15 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
                 <FieldHeader>
                   <Calendar />
                   Release Date
+                  <span style={{
+                    marginLeft: '8px',
+                    fontSize: '11px',
+                    color: theme.colors.text.tertiary,
+                    fontStyle: 'italic',
+                    fontWeight: 'normal'
+                  }}>
+                    (applies to all tracks)
+                  </span>
                   <div className={`status-icon ${getFieldStatus('releaseDate')}`}>
                     {getFieldStatus('releaseDate') === 'match' && <CheckCircle />}
                     {getFieldStatus('releaseDate') === 'differ' && <AlertTriangle />}
@@ -1664,6 +1682,15 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
                 <MapPin size={16} />
                 Location Information
                 <span className="count">3 fields</span>
+                <span style={{
+                  marginLeft: '8px',
+                  fontSize: '11px',
+                  color: theme.colors.text.tertiary,
+                  fontStyle: 'italic',
+                  fontWeight: 'normal'
+                }}>
+                  (applies to all tracks)
+                </span>
               </div>
             </SectionHeader>
             <SectionContent collapsed={!expandedSections.location}>
@@ -2057,53 +2084,26 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
                               <div className="track-number">Track {index + 1}</div>
                               <div className="track-title">
                                 {trackEditMode ? (
-                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    <input
-                                      type="text"
-                                      value={trackSelections[`track-${index}-title`] || (hasMatch ? match.title : (track.title || track.filename))}
-                                      onChange={(e) => {
-                                        setTrackSelections(prev => ({
-                                          ...prev,
-                                          [`track-${index}-title`]: e.target.value
-                                        }));
-                                      }}
-                                      style={{
-                                        padding: '4px 8px',
-                                        background: theme.colors.background.surface,
-                                        border: `1px solid ${theme.colors.border}`,
-                                        borderRadius: '4px',
-                                        color: theme.colors.text.primary,
-                                        fontSize: '14px',
-                                        width: '350px'
-                                      }}
-                                      placeholder="Edit track title metadata"
-                                    />
-                                    <button
-                                      onClick={() => {
-                                        const newTitle = trackSelections[`track-${index}-title`] || (hasMatch ? match.title : (track.title || track.filename));
-                                        const updatedSelections = {};
-                                        trackMatches.forEach((_, i) => {
-                                          updatedSelections[`track-${i}-title`] = newTitle;
-                                        });
-                                        setTrackSelections(prev => ({
-                                          ...prev,
-                                          ...updatedSelections
-                                        }));
-                                      }}
-                                      style={{
-                                        padding: '4px 8px',
-                                        background: theme.colors.background.elevated,
-                                        border: `1px solid ${theme.colors.border}`,
-                                        borderRadius: '4px',
-                                        fontSize: '11px',
-                                        cursor: 'pointer',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                      title="Apply this title to all tracks"
-                                    >
-                                      Apply to All
-                                    </button>
-                                  </div>
+                                  <input
+                                    type="text"
+                                    value={trackSelections[`track-${index}-title`] || (hasMatch ? match.title : (track.title || track.filename))}
+                                    onChange={(e) => {
+                                      setTrackSelections(prev => ({
+                                        ...prev,
+                                        [`track-${index}-title`]: e.target.value
+                                      }));
+                                    }}
+                                    style={{
+                                      padding: '4px 8px',
+                                      background: theme.colors.background.surface,
+                                      border: `1px solid ${theme.colors.border}`,
+                                      borderRadius: '4px',
+                                      color: theme.colors.text.primary,
+                                      fontSize: '14px',
+                                      width: '400px'
+                                    }}
+                                    placeholder="Edit track title metadata"
+                                  />
                                 ) : (
                                   hasMatch ? match.title : (track.title || track.filename)
                                 )}
