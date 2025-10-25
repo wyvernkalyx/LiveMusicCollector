@@ -1045,6 +1045,10 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
 
             console.log(`Using track ${i + 1} for album data. Performance date:`, performanceDate);
 
+            // Determine if it's a live release
+            const secondaryTypes = result.release?.['release-group']?.['secondary-types'] || [];
+            const isLiveRelease = result.isLive || secondaryTypes.includes('Live');
+
             albumData = {
               artist: result.artist || 'Grateful Dead',
               album: result.album || result.release?.title || '',
@@ -1055,9 +1059,10 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
               state: result.state || concertInfo?.state || '',
               releaseType: result.release?.['release-group']?.['primary-type'] || 'Unknown',
               releaseStatus: result.release?.status || 'Unknown',
+              isLive: isLiveRelease,
               artworkUrl: '',
               trackCount: group.tracks?.length || 0,
-              notes: result.isLive ? 'Live Recording' : '',
+              notes: isLiveRelease ? 'Live Recording' : '',
               musicbrainzUrl: result.releaseId ? `https://musicbrainz.org/release/${result.releaseId}` : '',
               releaseId: result.releaseId,
               recordingId: result.recordingId
@@ -1067,10 +1072,16 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
             const primaryType = result.release?.['release-group']?.['primary-type'];
             const status = result.release?.status;
             const secondaryTypes = result.release?.['release-group']?.['secondary-types'] || [];
+            const isLiveRelease = result.isLive || secondaryTypes.includes('Live');
 
-            if (status === 'Official' || primaryType === 'Album' || primaryType === 'EP') {
+            // FIXED: Official releases are official regardless of whether they're live
+            if (status === 'Official') {
               setReleaseType('OFFICIAL');
-            } else if (status === 'Bootleg' || secondaryTypes.includes('Live')) {
+            } else if (status === 'Bootleg') {
+              setReleaseType('BOOTLEG');
+            } else if (primaryType === 'Album' || primaryType === 'EP') {
+              setReleaseType('OFFICIAL');
+            } else {
               setReleaseType('BOOTLEG');
             }
 
@@ -1241,22 +1252,28 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
     let fullPath;
 
     // Different folder structure based on release type
-    if (releaseType === 'OFFICIAL' && album) {
-      // Official releases: /Artist/Album Name
+    const isLiveRelease = mbData.isLive || releaseType === 'BOOTLEG';
+
+    if (releaseType === 'OFFICIAL' && !isLiveRelease && album) {
+      // Official studio releases: /Artist/Album Name/
       folderName = album;
       fullPath = `/${artist}/${album}/`;
     } else {
-      // Bootlegs/Live recordings: /Artist/Year/Date - Venue - State (Source)
+      // Live recordings (official or bootleg): /Artist/Year/Date - Venue - City, State - [Album Name]/
       folderName = date;
       if (hasValidVenue) {
         folderName += ` - ${venue}`;
       }
-      if (state) {
+      if (city && state) {
+        folderName += ` - ${city}, ${state}`;
+      } else if (state) {
         folderName += ` - ${state}`;
+      } else if (city) {
+        folderName += ` - ${city}`;
       }
-      // Add source type to folder name if specified
-      if (sourceType) {
-        folderName += ` (${sourceType})`;
+      // For official live releases, add album name
+      if (releaseType === 'OFFICIAL' && album) {
+        folderName += ` - ${album}`;
       }
       fullPath = `/${artist}/${year}/${folderName}/`;
     }
