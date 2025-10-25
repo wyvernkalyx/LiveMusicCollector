@@ -1071,8 +1071,6 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
             // Determine if it's official based on MusicBrainz data
             const primaryType = result.release?.['release-group']?.['primary-type'];
             const status = result.release?.status;
-            const secondaryTypes = result.release?.['release-group']?.['secondary-types'] || [];
-            const isLiveRelease = result.isLive || secondaryTypes.includes('Live');
 
             // FIXED: Official releases are official regardless of whether they're live
             if (status === 'Official') {
