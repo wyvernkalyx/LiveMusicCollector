@@ -357,6 +357,12 @@ function ImportPage() {
 
   // Handle confirmed import after metadata review
   const handleConfirmedImport = async (editedGroups) => {
+    console.log('=== HANDLE CONFIRMED IMPORT ===');
+    console.log('Received groups:', editedGroups.length);
+    editedGroups.forEach((group, i) => {
+      console.log(`Group ${i + 1}: ${group.tracks?.length || 0} tracks`);
+    });
+
     setShowMetadataReview(false);
     setIsProcessing(true);
     setProgress(0);

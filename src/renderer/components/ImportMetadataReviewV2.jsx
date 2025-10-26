@@ -2342,7 +2342,14 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
             </button>
             <button
               className="primary"
-              onClick={() => onConfirm(editedGroups)}
+              onClick={() => {
+                console.log('=== CONTINUE IMPORT CLICKED ===');
+                console.log('Number of groups:', editedGroups.length);
+                editedGroups.forEach((group, i) => {
+                  console.log(`Group ${i + 1}: ${group.tracks?.length || 0} tracks`);
+                });
+                onConfirm(editedGroups);
+              }}
               disabled={!group.date || group.date === 'Unknown-Date' || group.date === '' || !/^\d{4}-\d{2}-\d{2}$/.test(group.date) || !group.venue || group.venue === 'the' || group.venue === 'Unknown Venue' || group.venue === ''}
             >
               <ChevronRight />
