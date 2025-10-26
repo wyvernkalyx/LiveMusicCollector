@@ -1234,6 +1234,7 @@ function ImportMetadataReviewV2({ fileGroups, onConfirm, onCancel }) {
 
   const generateFolderPreview = () => {
     const group = editedGroups[0];
+    const mbData = group?.musicbrainzData || {};
     const artist = group.artist || 'Grateful Dead';
     const date = group.date || 'Unknown-Date';
     const year = date && date !== 'Unknown-Date' ? date.substring(0, 4) : 'Unknown';
